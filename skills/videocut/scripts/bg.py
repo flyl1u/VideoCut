@@ -4,7 +4,7 @@
 """在后台跑耗时命令（美颜、预览视频、审阅服务……），任何 agent 都能用：不依赖 agent 自带的后台任务功能。
 
 命令在独立进程里运行，输出写进日志文件；agent 的这条命令马上返回，之后随时查进度或停掉。
-日志和状态在 %LOCALAPPDATA%/videocut/bg/<名字>.log / .json。
+日志和状态在 %USERPROFILE%/.videocut/bg/<名字>.log / .json。
 
   uv run bg.py start <名字> [--until 文本] [--timeout 秒] -- <命令...>
       启动；给了 --until 就等到日志里出现这段文本（比如 READY）再返回，并打印那一行。
@@ -123,7 +123,8 @@ def cmd_run(name: str, argv: list[str]) -> int:
     env = dict(os.environ, PYTHONUNBUFFERED="1", PYTHONIOENCODING="utf-8")
     with open(log, "ab", buffering=0) as f:
         try:
-            p = subprocess.Popen(argv, stdout=f, stderr=subprocess.STDOUT, stdin=subprocess.DEVNULL, env=env)
+            kw = {"creationflags": subprocess.CREATE_NO_WINDOW} if os.name == "nt" else {}  # 不弹黑窗
+            p = subprocess.Popen(argv, stdout=f, stderr=subprocess.STDOUT, stdin=subprocess.DEVNULL, env=env, **kw)
         except OSError as e:
             f.write(f"\n[bg] 启动失败：{e}\n".encode("utf-8"))
             code = 127
@@ -145,20 +146,54 @@ def spawn(name: str, argv: list[str]) -> int:
         sys.exit(f"{name} 已经在运行（pid={old['pid']}）。先 `bg.py stop {name}`，或换个名字。")
     log.write_bytes(b"")
     write_state(name, {"name": name, "cmd": argv, "cwd": os.getcwd(), "started": time.time(), "log": str(log)})
-    wrapper = [sys.executable, str(Path(__file__).resolve()), "_run", name, "--", *argv]
-    kw: dict = dict(stdin=subprocess.DEVNULL, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL, close_fds=True)
-    if os.name == "nt":
-        base = subprocess.CREATE_NEW_PROCESS_GROUP | subprocess.CREATE_NO_WINDOW
-        try:  # 脱离 agent 的作业对象，agent 的命令结束时不会被一起杀掉
-            p = subprocess.Popen(wrapper, creationflags=base | subprocess.CREATE_BREAKAWAY_FROM_JOB, **kw)
-        except OSError:
-            p = subprocess.Popen(wrapper, creationflags=base, **kw)
-    else:
-        p = subprocess.Popen(wrapper, start_new_session=True, **kw)
+    wrapper = [stable_python(), str(Path(__file__).resolve()), "_run", name, "--", *argv]
+    pid = spawn_outside_agent(wrapper) if os.name == "nt" else None
+    detached = pid is not None
+    if pid is None:
+        kw: dict = dict(stdin=subprocess.DEVNULL, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL, close_fds=True)
+        if os.name == "nt":
+            p = subprocess.Popen(wrapper, creationflags=subprocess.CREATE_NEW_PROCESS_GROUP | subprocess.CREATE_NO_WINDOW, **kw)
+        else:
+            p = subprocess.Popen(wrapper, start_new_session=True, **kw)
+        pid = p.pid
     st = read_state(name) or {}
-    st["pid"] = p.pid
+    st.update(pid=pid, detached=detached)
     write_state(name, st)
-    return p.pid
+    return pid
+
+
+def stable_python() -> str:
+    """不会被删掉的 Python。
+
+    `uv run` 跑没有依赖的脚本时，sys.executable 是一个临时环境里的 python，命令结束后 uv 会把它删掉；
+    后台进程要用它背后的基础解释器（uv 管理的 cpython），本 skill 的后台脚本只用标准库。
+    """
+    base = Path(getattr(sys, "_base_executable", "") or sys.executable)
+    return str(base if base.exists() else Path(sys.executable))
+
+
+def spawn_outside_agent(wrapper: list[str]) -> int | None:
+    """Windows：让系统的 WMI 服务来创建进程。
+
+    agent（Claude Code、Codex……）把自己启动的命令都放在一个作业对象里，agent 一退出就连带全部杀掉，
+    而且不允许脱离（CREATE_BREAKAWAY_FROM_JOB 会被拒绝）。WMI 创建的进程不在这个作业里，agent 关掉也不受影响。
+    用 pythonw 跑包装进程，不会弹出黑窗口。失败（比如沙箱不让用 WMI）返回 None，退回普通方式。
+    """
+    exe = Path(wrapper[0])
+    pyw = exe.with_name("pythonw.exe")
+    cmd = subprocess.list2cmdline([str(pyw if pyw.exists() else exe), *wrapper[1:]])
+    ps = ("$si = New-CimInstance -ClassName Win32_ProcessStartup -ClientOnly -Property @{ShowWindow=[uint16]0}; "
+          "$r = Invoke-CimMethod -ClassName Win32_Process -MethodName Create -Arguments "
+          "@{CommandLine=$env:VC_BG_CMD; CurrentDirectory=$env:VC_BG_CWD; ProcessStartupInformation=$si}; "
+          "if ($r.ReturnValue -eq 0) { $r.ProcessId } else { exit 1 }")
+    try:
+        r = subprocess.run(["powershell", "-NoProfile", "-NonInteractive", "-Command", ps],
+                           env=dict(os.environ, VC_BG_CMD=cmd, VC_BG_CWD=os.getcwd()),
+                           capture_output=True, text=True, timeout=30, creationflags=subprocess.CREATE_NO_WINDOW)
+    except (OSError, subprocess.SubprocessError):
+        return None
+    out = (r.stdout or "").strip().splitlines()
+    return int(out[-1]) if r.returncode == 0 and out and out[-1].strip().isdigit() else None
 
 
 def wait(name: str, until: str | None, timeout: float) -> int:
@@ -203,7 +238,13 @@ def main() -> int:
     fsproj.utf8_stdout()
     if len(sys.argv) > 2 and sys.argv[1] == "_run":
         rest = sys.argv[3:]
-        return cmd_run(sys.argv[2], rest[1:] if rest[:1] == ["--"] else rest)
+        try:
+            return cmd_run(sys.argv[2], rest[1:] if rest[:1] == ["--"] else rest)
+        except BaseException:  # pythonw 没有控制台，出错时把原因留在日志里
+            import traceback
+            with open(paths(sys.argv[2])[1], "a", encoding="utf-8") as f:
+                f.write("\n[bg] " + traceback.format_exc())
+            raise
 
     argv = sys.argv[1:]
     command = argv[argv.index("--") + 1:] if "--" in argv else []

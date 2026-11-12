@@ -14,7 +14,7 @@ FocuSee 自己没有人脸美颜（它的 Beauty 是音频美化），所以直�
   uv run beauty.py --project "<xxx.focusee>" --restore           # 换回原始摄像头画面
 
 参数（0–100，含义同剪映）：默认读 assets/beauty_preset.json，
-%LOCALAPPDATA%/videocut/beauty_preset.json 存在时以它为准（用户在调参页 beauty_tuner.py 保存的预设）。
+%USERPROFILE%/.videocut/beauty_preset.json 存在时以它为准（用户在调参页 beauty_tuner.py 保存的预设）。
 """
 from __future__ import annotations
 

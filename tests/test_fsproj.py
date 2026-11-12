@@ -3,9 +3,13 @@
 运行：uv run --no-project python -m unittest discover -s tests -v
 """
 import json
+import os
 import sys
+import tempfile
 import unittest
 from pathlib import Path
+
+os.environ.setdefault("VIDEOCUT_HOME", tempfile.mkdtemp(prefix="videocut-test-"))  # 不往本机数据目录里写测试工作目录
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "skills" / "videocut" / "scripts"))
 import fsproj  # noqa: E402

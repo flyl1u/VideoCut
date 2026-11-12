@@ -1,0 +1,256 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<link rel="icon" href="/favicon.svg" type="image/svg+xml">
+<title>VideoCut 工作台</title>
+<style>
+:root {
+  --bg: #f6f6f4; --panel: #ffffff; --ink: #1d1d1b; --muted: #6b6b66; --line: #e3e2dd;
+  --accent: #2f6fdb; --accent-ink: #ffffff; --hover: #efeee9; --chip: #f0efea;
+  --keep: #3aa76d; --warn: #b5651d; --chap: #0f8a8a; --manual: #8d5cd6;
+  --shadow: 0 1px 2px rgba(0,0,0,.06), 0 4px 16px rgba(0,0,0,.05);
+}
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme="light"]) {
+    --bg: #161615; --panel: #1f1f1d; --ink: #ecebe6; --muted: #9a9993; --line: #33322f;
+    --accent: #5b93f0; --hover: #2a2a27; --chip: #2a2a27; --warn: #e0a05a; --chap: #3cbcbc; --manual: #b48cf0;
+    --shadow: 0 1px 2px rgba(0,0,0,.4);
+  }
+}
+:root[data-theme="dark"] {
+  --bg: #161615; --panel: #1f1f1d; --ink: #ecebe6; --muted: #9a9993; --line: #33322f;
+  --accent: #5b93f0; --hover: #2a2a27; --chip: #2a2a27; --warn: #e0a05a; --chap: #3cbcbc; --manual: #b48cf0;
+  --shadow: 0 1px 2px rgba(0,0,0,.4);
+}
+* { box-sizing: border-box; }
+html, body { margin: 0; background: var(--bg); color: var(--ink);
+  font: 14px/1.6 system-ui, -apple-system, "Microsoft YaHei UI", "PingFang SC", sans-serif; }
+button { font: inherit; color: inherit; }
+header { position: sticky; top: 0; z-index: 10; background: var(--panel); border-bottom: 1px solid var(--line);
+  display: flex; gap: 12px; align-items: center; padding: 10px 16px; flex-wrap: wrap; }
+header h1 { font-size: 16px; margin: 0; font-weight: 650; letter-spacing: .01em; }
+header .sub { color: var(--muted); font-size: 13px; }
+.spacer { flex: 1; }
+.btn { border: 1px solid var(--line); background: var(--panel); border-radius: 8px; padding: 5px 12px; cursor: pointer;
+  text-decoration: none; color: inherit; display: inline-flex; align-items: center; gap: 6px; white-space: nowrap; }
+.btn:hover:not(:disabled) { background: var(--hover); }
+.btn:disabled { opacity: .45; cursor: default; }
+.btn.primary { background: var(--accent); border-color: var(--accent); color: var(--accent-ink); }
+.btn.primary:hover { filter: brightness(1.08); background: var(--accent); }
+.btn.ghost { border-color: transparent; color: var(--muted); }
+main { max-width: 960px; margin: 0 auto; padding: 20px 16px 48px; }
+h2 { font-size: 13px; font-weight: 600; color: var(--muted); margin: 28px 0 10px; letter-spacing: .02em; }
+h2:first-child { margin-top: 4px; }
+.list { display: flex; flex-direction: column; gap: 10px; }
+.item { background: var(--panel); border: 1px solid var(--line); border-radius: 12px; box-shadow: var(--shadow);
+  padding: 14px 16px; display: grid; grid-template-columns: minmax(0, 1fr) auto; gap: 6px 16px; align-items: center; }
+.item .name { font-weight: 600; font-size: 15px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; display: flex; align-items: center; gap: 6px; min-width: 0; }
+.item .name .t { overflow: hidden; text-overflow: ellipsis; }
+.ren { border: 0; background: transparent; color: var(--muted); cursor: pointer; padding: 2px 4px; border-radius: 6px; opacity: 0; transition: opacity .15s; flex: none; line-height: 1; }
+.item:hover .ren, .ren:focus-visible { opacity: 1; }
+.ren:hover { background: var(--hover); color: var(--ink); }
+@media (hover: none) { .ren { opacity: 1; } }
+.name input { font: inherit; font-weight: 600; color: var(--ink); background: var(--bg); border: 1px solid var(--accent); border-radius: 6px; padding: 1px 8px; min-width: 0; width: min(420px, 100%); outline: none; }
+.orig { color: var(--muted); font-size: 12px; font-weight: 400; }
+.item .path { color: var(--muted); font-size: 12px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; direction: rtl; text-align: left; }
+.item .meta { display: flex; flex-wrap: wrap; gap: 6px 14px; color: var(--muted); font-variant-numeric: tabular-nums; font-size: 13px; }
+.item .meta b { color: var(--ink); font-weight: 600; }
+.item .acts { grid-row: 1 / span 3; grid-column: 2; display: flex; gap: 8px; align-items: center; }
+.item.missing { opacity: .62; box-shadow: none; }
+.chip { display: inline-block; font-size: 12px; padding: 0 8px; border-radius: 999px; background: var(--chip); color: var(--muted); }
+.chip.reorder { color: var(--manual); }
+.chip.chap { color: var(--chap); }
+.chip.warn { color: var(--warn); }
+.down { color: var(--keep); }
+.fresh .item { box-shadow: none; padding: 10px 16px; }
+.note { color: var(--muted); font-size: 13px; margin: -4px 0 10px; }
+.empty { background: var(--panel); border: 1px dashed var(--line); border-radius: 12px; padding: 22px 16px; color: var(--muted); text-align: center; }
+.banner { background: var(--panel); border: 1px solid var(--warn); color: var(--warn); border-radius: 10px; padding: 10px 14px; margin-bottom: 14px; }
+footer { color: var(--muted); font-size: 12px; margin-top: 36px; line-height: 1.8; }
+code { font-family: ui-monospace, "Cascadia Mono", Consolas, monospace; font-size: 12px; background: var(--chip); padding: 1px 5px; border-radius: 4px; }
+#toast { position: fixed; left: 50%; bottom: 24px; transform: translateX(-50%); background: var(--ink); color: var(--bg);
+  padding: 8px 16px; border-radius: 8px; font-size: 13px; opacity: 0; transition: opacity .2s; pointer-events: none; max-width: calc(100% - 32px); }
+#toast.on { opacity: 1; }
+@media (max-width: 640px) {
+  .item { grid-template-columns: minmax(0, 1fr); }
+  .item .acts { grid-row: auto; grid-column: 1; }
+  header .sub { display: none; }
+}
+[hidden] { display: none !important; }
+</style>
+</head>
+<body>
+<header>
+  <h1>VideoCut 工作台</h1>
+  <span class="sub">不依赖 agent，关掉 Claude Code / Codex 也能打开、编辑、保存 · 只在本机运行</span>
+  <div class="spacer"></div>
+  <button class="btn" id="theme" title="切换深浅色">◐</button>
+  <button class="btn ghost" id="quit" title="停掉工作台的后台服务（下次双击桌面快捷方式或让 agent 打开时会自动启动）">退出工作台</button>
+</header>
+<main>
+  <div class="banner" id="banner" hidden></div>
+  <h2>粗剪过的工程</h2>
+  <div class="list" id="projects"><div class="empty">加载中…</div></div>
+
+  <section class="fresh" id="freshBox" hidden>
+    <h2>最近录制、还没粗剪</h2>
+    <p class="note">粗剪要识别语音、判断重录和校对字幕，需要 agent 来做：点「复制粗剪指令」，粘贴到 Claude Code 或 Codex 里。</p>
+    <div class="list" id="fresh"></div>
+  </section>
+
+  <footer>
+    审阅页里的修改点「保存到工程」就写回 FocuSee 工程（每次都会先备份）；保存前请先在 FocuSee 里关掉这个工程。<br>
+    工作文件都在 <code>%USERPROFILE%\.videocut</code>。地址可以加进浏览器收藏夹，工作台没在运行时双击桌面上的「VideoCut 工作台」就能打开。
+  </footer>
+</main>
+<div id="toast"></div>
+<script>
+const $ = s => document.querySelector(s);
+const esc = s => String(s ?? "").replace(/[&<>"']/g, c => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c]));
+function fmt(sec) {
+  if (sec == null || isNaN(sec)) return "—";
+  sec = Math.round(sec);
+  const h = Math.floor(sec / 3600), m = Math.floor(sec % 3600 / 60), s = sec % 60;
+  return (h ? h + ":" + String(m).padStart(2, "0") : m) + ":" + String(s).padStart(2, "0");
+}
+function ago(ts) {
+  const d = (Date.now() / 1000 - ts);
+  if (d < 60) return "刚刚";
+  if (d < 3600) return Math.floor(d / 60) + " 分钟前";
+  if (d < 86400) return Math.floor(d / 3600) + " 小时前";
+  if (d < 86400 * 7) return Math.floor(d / 86400) + " 天前";
+  const t = new Date(ts * 1000);
+  return `${t.getFullYear()}-${String(t.getMonth() + 1).padStart(2, "0")}-${String(t.getDate()).padStart(2, "0")}`;
+}
+let toastTimer;
+function toast(msg, ms = 2600) {
+  const t = $("#toast"); t.textContent = msg; t.classList.add("on");
+  clearTimeout(toastTimer); toastTimer = setTimeout(() => t.classList.remove("on"), ms);
+}
+async function copy(text, okMsg) {
+  try { await navigator.clipboard.writeText(text); toast(okMsg); }
+  catch (e) { prompt("复制下面这段：", text); }
+}
+
+const PEN = `<svg width="14" height="14" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M11 2.5l2.5 2.5L5.5 13H3v-2.5z"/></svg>`;
+function nameCell(p, chips) {
+  const orig = p.original && p.original !== p.name ? ` title="FocuSee 工程名：${esc(p.original)}"` : ` title="${esc(p.name)}"`;
+  return `<div class="name" data-project="${esc(p.project)}" data-name="${esc(p.name)}" data-original="${esc(p.original || p.name)}">
+    <span class="t"${orig}>${esc(p.name)}</span>
+    <button class="ren" title="重命名（只改这里显示的名字，FocuSee 里的工程名不变）" aria-label="重命名">${PEN}</button>
+    ${chips || ""}</div>`;
+}
+function startRename(cell) {
+  if (cell.querySelector("input")) return;
+  const cur = cell.dataset.name, orig = cell.dataset.original;
+  const keep = cell.innerHTML;
+  cell.innerHTML = `<input value="${esc(cur)}" maxlength="80" placeholder="${esc(orig)}"><span class="orig">回车保存 · Esc 取消 · 清空恢复原名</span>`;
+  const inp = cell.querySelector("input");
+  inp.focus(); inp.select();
+  let done = false;
+  const finish = async (save) => {
+    if (done) return; done = true;
+    const val = inp.value.trim();
+    if (!save || val === cur) { cell.innerHTML = keep; return; }
+    try {
+      const r = await fetch("/api/rename", { method: "POST", headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ project: cell.dataset.project, name: val }) });
+      const j = await r.json();
+      if (!r.ok) throw new Error(j.error || r.statusText);
+      toast(val ? "已重命名（FocuSee 里的工程名没变）" : "已恢复原名");
+      load();
+    } catch (e) { cell.innerHTML = keep; toast("没能重命名：" + e.message, 5000); }
+  };
+  inp.addEventListener("keydown", e => {
+    if (e.key === "Enter") { e.preventDefault(); finish(true); }
+    else if (e.key === "Escape") { e.preventDefault(); finish(false); }
+  });
+  inp.addEventListener("blur", () => finish(true));
+}
+
+function projectRow(p) {
+  const s = p.summary;
+  const meta = [];
+  if (s) {
+    const pct = s.before ? Math.round((1 - s.after / s.before) * 100) : 0;
+    meta.push(`原 <b>${fmt(s.before)}</b> → 剪后 <b>${fmt(s.after)}</b> <span class="down">−${pct}%</span>`);
+    const n = Object.values(s.cuts || {}).reduce((a, c) => a + (c.count || 0), 0);
+    meta.push(`剪了 ${n} 处`);
+  }
+  meta.push(`改动于 ${ago(p.modified)}`);
+  const chips = [];
+  if (p.reordered) chips.push(`<span class="chip reorder">调序工程</span>`);
+  if (s && s.chapters) chips.push(`<span class="chip chap">${s.chapters} 个章节</span>`);
+  if (s && s.moves) chips.push(`<span class="chip reorder">有 ${s.moves} 处调序未生成</span>`);
+  if (!p.proxy) chips.push(`<span class="chip warn">预览视频还没生成</span>`);
+  const url = "/p/" + encodeURIComponent(p.key) + "/";
+  const acts = p.exists
+    ? `<button class="btn" data-copy="${esc(p.project)}" title="复制工程文件夹路径">复制路径</button>
+       <a class="btn primary" href="${url}">打开审阅页</a>`
+    : `<span class="chip warn">工程找不到了（被移动、改名或删除）</span>`;
+  return `<div class="item${p.exists ? "" : " missing"}">
+    ${nameCell(p, chips.join(" "))}
+    <div class="acts">${acts}</div>
+    <div class="path" title="${esc(p.project)}">${esc(p.project)}</div>
+    <div class="meta">${meta.map(x => `<span>${x}</span>`).join("")}</div>
+  </div>`;
+}
+function freshRow(f) {
+  return `<div class="item">
+    ${nameCell(f)}
+    <div class="acts"><button class="btn" data-cmd="${esc(f.project)}">复制粗剪指令</button></div>
+    <div class="meta"><span>录制于 ${ago(f.modified)}</span></div>
+  </div>`;
+}
+
+async function load() {
+  let j;
+  try {
+    const r = await fetch("/api/projects", { cache: "no-store" });
+    j = await r.json();
+  } catch (e) {
+    $("#projects").innerHTML = `<div class="empty">连不上工作台服务（可能已经退出）。双击桌面上的「VideoCut 工作台」重新打开。</div>`;
+    return;
+  }
+  const ps = j.projects || [];
+  $("#projects").innerHTML = ps.length ? ps.map(projectRow).join("")
+    : `<div class="empty">还没有粗剪过的工程。在 Claude Code 或 Codex 里说「帮我粗剪最新的 FocuSee 工程」，完成后会出现在这里。</div>`;
+  const fr = j.fresh || [];
+  $("#freshBox").hidden = !fr.length;
+  $("#fresh").innerHTML = fr.map(freshRow).join("");
+}
+
+document.addEventListener("click", e => {
+  const rn = e.target.closest(".ren");
+  if (rn) return startRename(rn.closest(".name"));
+  const c = e.target.closest("[data-copy]");
+  if (c) return copy(c.dataset.copy, "已复制工程路径");
+  const m = e.target.closest("[data-cmd]");
+  if (m) return copy(`帮我粗剪这个 FocuSee 工程："${m.dataset.cmd}"`, "已复制，粘贴到 Claude Code 或 Codex 里发送");
+});
+$("#theme").onclick = () => {
+  const cur = document.documentElement.dataset.theme
+    || (matchMedia("(prefers-color-scheme: dark)").matches ? "dark" : "light");
+  const next = cur === "dark" ? "light" : "dark";
+  document.documentElement.dataset.theme = next;
+  try { localStorage.setItem("fc-theme", next); } catch (e) {}
+};
+$("#quit").onclick = async () => {
+  if (!confirm("退出工作台？打开着的审阅页会连不上，没保存的修改先保存。\n下次双击桌面上的「VideoCut 工作台」或让 agent 打开时会自动启动。")) return;
+  try {
+    const r = await fetch("/api/quit", { method: "POST", headers: { "Content-Type": "application/json" }, body: "{}" });
+    const j = await r.json();
+    if (!r.ok) throw new Error(j.error || r.statusText);
+    document.body.innerHTML = `<main><div class="empty">工作台已退出。可以关掉这个页面了。</div></main>`;
+  } catch (e) { toast("没能退出：" + e.message, 5000); }
+};
+try { const th = localStorage.getItem("fc-theme"); if (th) document.documentElement.dataset.theme = th; } catch (e) {}
+const missing = new URLSearchParams(location.search).get("missing");
+if (missing) { $("#banner").hidden = false; $("#banner").textContent = `没找到「${missing}」的工作文件，可能已经被清理。下面是现有的工程。`; }
+addEventListener("focus", load);
+load();
+</script>
+</body>
+</html>

@@ -8,7 +8,7 @@ import tempfile
 import unittest
 from pathlib import Path
 
-os.environ["LOCALAPPDATA"] = tempfile.mkdtemp(prefix="fc-test-")
+os.environ["VIDEOCUT_HOME"] = tempfile.mkdtemp(prefix="fc-test-")
 sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "skills" / "videocut" / "scripts"))
 import reorder  # noqa: E402
 

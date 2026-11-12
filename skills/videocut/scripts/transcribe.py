@@ -9,7 +9,7 @@
 
 需要环境变量 DASHSCOPE_API_KEY（音频会上传到阿里云百炼临时存储）。
 同一份音频按哈希缓存，重复运行不会重复计费；--force 强制重新识别。
-术语表 %LOCALAPPDATA%/videocut/hotwords.txt 和全局词表里的目标写法会作为热词提交，提高专有名词识别率；
+术语表 %USERPROFILE%/.videocut/hotwords.txt 和全局词表里的目标写法会作为热词提交，提高专有名词识别率；
 热词服务出错时只提示，不影响识别。
 """
 from __future__ import annotations

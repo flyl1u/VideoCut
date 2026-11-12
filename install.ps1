@@ -8,12 +8,14 @@
 用法：
   .\install.ps1                              # 装到默认位置
   .\install.ps1 -Target D:\x\skills          # 另外装到某个 agent 自己的 skill 目录（可写多个，逗号分隔）
-  .\install.ps1 -Uninstall                   # 删掉这些链接（不动仓库里的文件）
+  .\install.ps1 -NoShortcut                  # 不在桌面放「VideoCut 工作台」快捷方式
+  .\install.ps1 -Uninstall                   # 删掉这些链接和桌面快捷方式（不动仓库里的文件和你的数据）
 
 如果提示"禁止运行脚本"，用：powershell -ExecutionPolicy Bypass -File .\install.ps1
 #>
 param(
     [string[]]$Target = @(),
+    [switch]$NoShortcut,
     [switch]$Uninstall
 )
 
@@ -48,6 +50,27 @@ foreach ($d in $dirs) {
     New-Item -ItemType Directory -Force -Path $d | Out-Null
     New-Item -ItemType Junction -Path $link -Target $src | Out-Null
     Write-Host "已链接 $link -> $src"
+}
+
+# 桌面快捷方式：双击打开 VideoCut 工作台（审阅页的入口，不需要开着 agent）
+$lnk = Join-Path ([Environment]::GetFolderPath('Desktop')) 'VideoCut 工作台.lnk'
+if ($Uninstall) {
+    if (Test-Path -LiteralPath $lnk) { Remove-Item -LiteralPath $lnk; Write-Host "已删除 $lnk" }
+} elseif (-not $NoShortcut) {
+    $uvw = Get-Command uvw -ErrorAction SilentlyContinue   # uvw：不弹黑窗口的 uv
+    $uv = Get-Command uv -ErrorAction SilentlyContinue
+    if ($uvw -or $uv) {
+        $sh = New-Object -ComObject WScript.Shell
+        $s = $sh.CreateShortcut($lnk)
+        $s.TargetPath = if ($uvw) { $uvw.Source } else { $uv.Source }
+        $s.Arguments = 'run "' + (Join-Path $src 'scripts\workbench.py') + '"'
+        $s.WorkingDirectory = $src
+        $s.Description = 'VideoCut 工作台：所有粗剪过的 FocuSee 工程，不开 agent 也能审阅、编辑、保存'
+        $s.IconLocation = (Join-Path $src 'assets\icon\videocut.ico') + ',0'
+        if (-not $uvw) { $s.WindowStyle = 7 }   # 没有 uvw 时最小化启动，窗口一闪就关
+        $s.Save()
+        Write-Host "已在桌面放好「VideoCut 工作台」快捷方式"
+    }
 }
 
 if (-not $Uninstall) {

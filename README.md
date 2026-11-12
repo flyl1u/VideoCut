@@ -16,7 +16,7 @@
 4. agent 逐句校对字幕错字（同音字、多出来的字），并把专有名词统一改成标准写法，直接改好不用你确认。依据按顺序是：录屏画面上写的（本地 OCR 识别屏幕文字）→ 读音对得上 → 你的用词习惯；都定不了就保留原词，不乱换。出现过的术语记进全局术语表，下次识别时作为热词提交给 fun-asr，越用越准。
 5. 写回工程：剪辑写入 `playTracks`，字幕写入 FocuSee 自带的字幕轨（每行 ≤16 字，按标点/停顿/语义断句），位置自动放在录屏窗口里、贴着窗口底边（按画布比例计算）。每次写入都会先备份。
 6. 摄像头美颜：FocuSee 没有人脸美颜，所以直接处理摄像头录像（磨皮、祛斑祛痘、匀肤、美白、祛法令纹、小脸、窄脸、祛黑眼圈、大眼；可以打开本地调参页拖滑块实时预览，调好后一键保存成自己的预设），按原时间戳重新编码，原文件留作 `webcam-0.original.mp4`，随时可还原。
-7. 打开本地审阅页（可切到「逐字稿」视图，像改文档一样选中删除、双击改字）：播放剪后效果并叠加字幕预览，按字幕或时间轴还原/追加剪辑，保存即写回工程。
+7. 打开本地审阅页（可切到「逐字稿」视图，像改文档一样选中删除、双击改字）：播放剪后效果并叠加字幕预览，按字幕或时间轴还原/追加剪辑，保存即写回工程。审阅页由常驻的「VideoCut 工作台」提供，**关掉 Claude Code / Codex 也能继续打开、编辑、保存**；工作台首页列出所有粗剪过的工程，桌面上有它的快捷方式。
 8. 调换前后顺序：逐字稿里拖句首的 ⠿ 把一句话挪到别处，剪后预览立刻按新顺序播放。FocuSee 本身会把片段按时间排回去，所以点「生成调序工程」后，会把录屏、摄像头、声音、鼠标轨迹按新顺序重新拼一份，另存为 `<原名> 调序.focusee`，原工程不动。
 
 9. 章节：agent 读逐字稿按内容分章并起标题，审阅页里可以改标题、拖动分界、增删章节；时间按剪后成片（含调换顺序）自动换算，导出 `00:00 开场` 这样的时间戳列表（工作目录里的 `chapters.txt`，页面上也能一键复制），直接贴进 B 站 / YouTube 简介。FocuSee 工程里没有章节字段，所以章节不写进工程。
@@ -49,7 +49,7 @@ cd VideoCut
 powershell -ExecutionPolicy Bypass -File .\install.ps1
 ```
 
-`install.ps1` 会建两个目录联接（不复制文件，以后 `git pull` 就是更新）：
+`install.ps1` 会在桌面放一个「VideoCut 工作台」快捷方式（不想要就加 `-NoShortcut`），并建两个目录联接（不复制文件，以后 `git pull` 就是更新）：
 
 | 链接位置 | 给谁用 |
 |---|---|
@@ -58,7 +58,7 @@ powershell -ExecutionPolicy Bypass -File .\install.ps1
 
 别的 agent 如果只认自己的目录，用 `.\install.ps1 -Target <那个 agent 的 skills 目录>` 再链一份；实在不支持 skill 的 agent，也可以直接让它先读 `skills/videocut/SKILL.md` 再照着做。`.\install.ps1 -Uninstall` 删除链接。
 
-**Codex 用户注意**：Codex 默认在沙箱里运行，识别要联网、要写 FocuSee 工程目录和 `%LOCALAPPDATA%\videocut`，第一次会弹出提权请求，同意即可（或者用完全访问模式打开 Codex）。
+**Codex 用户注意**：Codex 默认在沙箱里运行，识别要联网、要写 FocuSee 工程目录和 `%USERPROFILE%\.videocut`，第一次会弹出提权请求，同意即可（或者用完全访问模式打开 Codex）。
 
 ## 用法
 
@@ -72,11 +72,17 @@ powershell -ExecutionPolicy Bypass -File .\install.ps1
 
 也可以明确点名调用：Claude Code 里输入 `/videocut`，Codex 里输入 `$videocut`。agent 会按 [SKILL.md](skills/videocut/SKILL.md) 的流程跑完，并打开审阅页。之后可以接着口头改，比如「第 30 句别剪」「把『写出来的东西』那句挪到最前面，生成调序工程」。
 
+### VideoCut 工作台
+
+粗剪完以后，审阅和修改不需要再开着 agent：双击桌面上的「VideoCut 工作台」，或者在浏览器打开 `http://127.0.0.1:8765/`（可以加进收藏夹）。首页列出所有粗剪过的工程，点「打开审阅页」就能接着改，点「保存到工程」写回 FocuSee；鼠标移到工程名上点 ✎ 可以给它起个好认的名字（只改工作台里显示的，FocuSee 里的工程名不变）；最近录了还没粗剪的工程也会列出来，点「复制粗剪指令」粘贴给 agent 即可。
+
+工作台是一个只监听本机的小服务，在后台独立运行，不随 agent 关闭；不用的时候几乎不占资源，想关掉就点首页右上角「退出工作台」。你在工作台里改过的内容，下次回到 agent 时它读到的也是最新的。重新识别、判断重录、校对字幕这些还是要 agent 来做。
+
 **写入前请先在 FocuSee 里关掉这个工程**（最好退出 FocuSee），写完再重新打开，否则 FocuSee 可能用旧状态覆盖。
 
 ## 还原
 
-每次写入都会在工程文件夹里留下 `configure.focuseeproj.bak-时间戳`。想回到某个版本，把它复制回 `configure.focuseeproj` 即可。美颜过的摄像头画面用 `uv run skills/videocut/scripts/beauty.py --project <工程> --restore` 换回原样。第一次处理前的原样文件还另存在 `%LOCALAPPDATA%\videocut\<工程名>-<hash>\original.focuseeproj`。调序工程是另存的新工程，原工程本来就没动。
+每次写入都会在工程文件夹里留下 `configure.focuseeproj.bak-时间戳`。想回到某个版本，把它复制回 `configure.focuseeproj` 即可。美颜过的摄像头画面用 `uv run skills/videocut/scripts/beauty.py --project <工程> --restore` 换回原样。第一次处理前的原样文件还另存在 `%USERPROFILE%\.videocut\<工程名>-<hash>\original.focuseeproj`。调序工程是另存的新工程，原工程本来就没动。
 
 ## 目录
 
@@ -98,7 +104,9 @@ skills/videocut/
   scripts/beauty.py      摄像头美颜（mediapipe 人脸关键点 + OpenCV）
   scripts/beauty_tuner.py 美颜调参页（本机实时预览，保存成用户预设）
   scripts/reorder.py     调换顺序：按新顺序重拼素材，另存为「调序」新工程
-  scripts/review_server.py  本地审阅服务（只监听 127.0.0.1）
+  scripts/workbench.py   VideoCut 工作台：常驻的本地服务（只监听 127.0.0.1），提供所有工程的审阅页
+  assets/workbench.html  工作台首页（工程列表）
+  assets/icon/           图标（make_icon.py 生成 svg/ico，桌面快捷方式和网页标签用）
   assets/review.html     审阅页
   assets/beauty_tuner.html  美颜调参页
   assets/beauty_preset.json  默认美颜参数

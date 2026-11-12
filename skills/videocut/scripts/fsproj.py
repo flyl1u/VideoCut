@@ -157,24 +157,51 @@ def dumps(conf: dict, newline: str = "\r\n", trailing_newline: bool = False) -> 
     return s
 
 
-DATA_DIR_NAME = "videocut"
-OLD_DATA_DIR_NAMES = ("focusee-cut",)  # 改名前用过的目录，第一次运行时整个搬过来
+DATA_ENV = "VIDEOCUT_HOME"          # 设了这个环境变量就用它当数据目录（测试也靠它隔离）
+DATA_DIR_NAME = ".videocut"
+LEGACY_DIR_NAMES = ("videocut", "focusee-cut")  # 以前放在 %LOCALAPPDATA% 下的目录名
 
 
 def data_root() -> Path:
-    """%LOCALAPPDATA%/videocut：术语表、热词、各工程的工作目录都在这里。"""
-    base = Path(os.environ.get("LOCALAPPDATA") or Path.home() / "AppData" / "Local")
-    d = base / DATA_DIR_NAME
-    if not d.exists():
-        for old in OLD_DATA_DIR_NAMES:
-            if (base / old).is_dir():
-                try:
-                    os.rename(base / old, d)
-                except OSError:
-                    pass
-                break
+    """数据目录，默认 %USERPROFILE%/.videocut：术语表、热词、美颜预设、各工程的工作目录都在这里。
+
+    不放 %LOCALAPPDATA%：Claude 桌面版这类商店（MSIX）应用，会把它启动的程序写进 AppData 的文件
+    悄悄转存到自己的私有目录（AppData/Local/Packages/<应用>/LocalCache），换一个 agent、
+    或者在外面独立运行的工作台都看不到。用户目录下的普通文件夹没有这个问题。
+    """
+    env = os.environ.get(DATA_ENV)
+    d = Path(env) if env else Path.home() / DATA_DIR_NAME
+    if not d.exists() and not env:
+        migrate_legacy(d)
     d.mkdir(parents=True, exist_ok=True)
     return d
+
+
+def legacy_dirs() -> list[Path]:
+    """以前的数据目录：%LOCALAPPDATA% 下的，以及被商店应用转存到 Packages/*/LocalCache 里的。"""
+    base = Path(os.environ.get("LOCALAPPDATA") or Path.home() / "AppData" / "Local")
+    out = []
+    for name in reversed(LEGACY_DIR_NAMES):  # 旧名字在前，后复制的覆盖先复制的
+        out.append(base / name)
+        out.extend(sorted((base / "Packages").glob(f"*/LocalCache/Local/{name}")))
+    return [p for p in out if p.is_dir()]
+
+
+def migrate_legacy(d: Path) -> None:
+    """第一次运行时把旧目录里的东西复制过来（旧目录原样保留，不删）。"""
+    olds = legacy_dirs()
+    if not olds:
+        return
+    tmp = d.with_name(d.name + ".migrating")
+    shutil.rmtree(tmp, ignore_errors=True)
+    skip = shutil.ignore_patterns("bg", "workbench.json", "*.tmp", "*.migrating")
+    try:
+        for old in olds:
+            shutil.copytree(old, tmp, dirs_exist_ok=True, ignore=skip)
+        (tmp / "MIGRATED_FROM.txt").write_text(chr(10).join(str(o) for o in olds) + chr(10), "utf-8")
+        os.replace(tmp, d)
+    except OSError:
+        shutil.rmtree(tmp, ignore_errors=True)
 
 
 def work_dir(project: Project) -> Path:

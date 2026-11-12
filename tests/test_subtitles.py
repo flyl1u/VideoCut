@@ -8,7 +8,7 @@ import tempfile
 import unittest
 from pathlib import Path
 
-os.environ["LOCALAPPDATA"] = tempfile.mkdtemp(prefix="videocut-test-")  # 不读本机的全局词表/术语表
+os.environ["VIDEOCUT_HOME"] = tempfile.mkdtemp(prefix="videocut-test-")  # 不读本机的全局词表/术语表
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "skills" / "videocut" / "scripts"))
 import subtitles  # noqa: E402

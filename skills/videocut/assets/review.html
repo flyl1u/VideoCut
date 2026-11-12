@@ -3,6 +3,7 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
+<link rel="icon" href="/favicon.svg" type="image/svg+xml">
 <title>粗剪审阅</title>
 <style>
 :root {
@@ -34,6 +35,7 @@ header h1 { font-size: 15px; margin: 0; font-weight: 600; white-space: nowrap; o
 .stats { display: flex; gap: 14px; color: var(--muted); font-variant-numeric: tabular-nums; flex-wrap: wrap; }
 .stats b { color: var(--ink); font-weight: 600; }
 .spacer { flex: 1; }
+a.btn { text-decoration: none; color: inherit; display: inline-block; }
 .btn { border: 1px solid var(--line); background: var(--panel); border-radius: 8px; padding: 5px 12px; cursor: pointer; }
 .btn:hover:not(:disabled) { background: var(--hover); }
 .btn:disabled { opacity: .45; cursor: default; }
@@ -207,6 +209,7 @@ main { flex: 1; display: grid; grid-template-columns: minmax(0, 1.25fr) minmax(0
 </head>
 <body>
 <header>
+  <a class="btn home" href="/" title="回到 VideoCut 工作台（所有工程）">← 工作台</a>
   <h1 id="title">加载中…</h1>
   <div class="stats" id="stats"></div>
   <div class="spacer"></div>
@@ -563,7 +566,7 @@ const chSourceStart = (c) => { const s = sentById.get(c.sentence); return s ? s.
 async function fetchChapters() {
   if (!(edit.chapters || []).length) { chapRes = { chapters: [], warnings: [], text: "", total: 0 }; renderChapters(); return; }
   try {
-    const r = await fetch("/api/chapters", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(edit) });
+    const r = await fetch("api/chapters", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(edit) });
     const j = await r.json(); if (!r.ok) throw new Error(j.error);
     chapRes = j; renderChapters();
   } catch (e) { $("#chwarn").textContent = "章节时间没算出来：" + e.message; }
@@ -589,7 +592,7 @@ function renderChapters(force) {
   $("#chcount").textContent = chs.length ? `${chs.length} 章` + (chapRes.total ? ` · 成片 ${fmtLen(chapRes.total)}` : "") : "";
   $("#chcopy").disabled = !chapRes.text;
   if (!chs.length) {
-    box.innerHTML = `<div class="chempty">还没有章节。让 Claude 按内容分章，或播放到某句时点「＋ 从这里分章」。</div>`;
+    box.innerHTML = `<div class="chempty">还没有章节。让 agent 按内容分章，或播放到某句时点「＋ 从这里分章」。</div>`;
     $("#chwarn").textContent = ""; lastCh = null; return;
   }
   box.innerHTML = ord.map(c => {
@@ -741,7 +744,7 @@ function gapChip(a, b, cov) {
 }
 async function loadDoc() {
   try {
-    const r = await fetch("/api/doc", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(edit) });
+    const r = await fetch("api/doc", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(edit) });
     const j = await r.json(); if (!r.ok) throw new Error(j.error);
     doc = j.sentences; if (view === "doc") renderDoc();
   } catch (e) { toast("逐字稿加载失败：" + e.message, 5000); }
@@ -782,7 +785,7 @@ function schedulePreview() {
   clearTimeout(subTimer);
   subTimer = setTimeout(async () => {
     try {
-      const r = await fetch("/api/preview", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(edit) });
+      const r = await fetch("api/preview", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(edit) });
       if (r.ok) { subs = (await r.json()).items || []; lastSub = null; }
     } catch (e) {}
     fetchChapters();
@@ -800,7 +803,7 @@ function updateSubtitle() {
 // ------------------------------------------------------------ 播放
 function setupVideo() {
   if (video) return;
-  $("#vbox").innerHTML = `<video id="video" preload="auto" src="/proxy.mp4" playsinline></video><div class="subov" id="subov" title="字幕预览"></div>`;
+  $("#vbox").innerHTML = `<video id="video" preload="auto" src="proxy.mp4" playsinline></video><div class="subov" id="subov" title="字幕预览"></div>`;
   video = $("#video");
   video.addEventListener("play", () => $("#play").textContent = "暂停");
   video.addEventListener("pause", () => $("#play").textContent = "播放");
@@ -1161,7 +1164,7 @@ function startEdit(sid) {
 async function save(force) {
   const btn = $("#save"); btn.disabled = true; btn.textContent = "保存中…";
   try {
-    const r = await fetch("/api/save" + (force ? "?force=1" : ""), { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(edit) });
+    const r = await fetch("api/save" + (force ? "?force=1" : ""), { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(edit) });
     const j = await r.json();
     if (r.status === 409) {
       if (confirm(j.error + "\n\n确认这个工程现在没有在 FocuSee 里打开，仍然写入吗？")) return save(true);
@@ -1179,6 +1182,7 @@ async function save(force) {
 
 // ---------- 调换顺序：后台重拼素材，生成新工程
 let reorderBusy = false;
+const reorderSeen = new Set();
 async function reorderProject() {
   const mins = Math.max(3, Math.round(D / 60 * 0.6));
   if (!confirm(`FocuSee 打开工程时会把片段按时间排回去，所以调换顺序要把素材本身按新顺序重新拼一份：\n\n` +
@@ -1186,7 +1190,7 @@ async function reorderProject() {
     `· 录屏、摄像头、声音、鼠标轨迹都按新顺序重拼（重新编码，大约 ${mins} 分钟以上，占用几 GB 空间）\n` +
     `· 当前页面上的剪辑和字幕修改一起带过去；被剪掉的部分也保留，在 FocuSee 里照样能还原\n\n开始生成吗？`)) return;
   try {
-    const r = await fetch("/api/reorder", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(edit) });
+    const r = await fetch("api/reorder", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(edit) });
     const j = await r.json();
     if (!r.ok) throw new Error(j.error || r.statusText);
     pollReorder();
@@ -1194,7 +1198,7 @@ async function reorderProject() {
 }
 async function pollReorder() {
   let j;
-  try { j = await (await fetch("/api/reorder")).json(); } catch (e) { setTimeout(pollReorder, 3000); return; }
+  try { j = await (await fetch("api/reorder")).json(); } catch (e) { setTimeout(pollReorder, 3000); return; }
   const btn = $("#reorder");
   reorderBusy = j.state === "running";
   if (reorderBusy) {
@@ -1204,19 +1208,24 @@ async function pollReorder() {
   btn.disabled = false; btn.textContent = "生成调序工程"; renderStats();
   if (j.state === "done" && j.result) {
     toast(`调序工程已生成：${j.result.project}\n在 FocuSee 里打开它就是新顺序；原工程没动。用时 ${Math.round(j.result.seconds / 60)} 分钟`, 15000);
+    if (j.result.review_url && !reorderSeen.has(j.result.project)) {
+      reorderSeen.add(j.result.project);
+      if (confirm("调序工程已生成。要打开它的审阅页接着改吗？（工作台首页也能找到它）")) location.href = j.result.review_url;
+    }
   } else if (j.state === "error") {
     toast("生成失败：" + (j.error || ""), 12000);
   }
 }
 
 async function pollProxy() {
-  try { const r = await fetch("/api/status"); const j = await r.json(); if (j.proxy) { setupVideo(); return; } } catch (e) {}
+  try { const r = await fetch("api/status"); const j = await r.json(); if (j.proxy) { setupVideo(); return; } } catch (e) {}
   setTimeout(pollProxy, 4000);
 }
 
 async function init() {
   try { const th = localStorage.getItem("fc-theme"); if (th) document.documentElement.dataset.theme = th; } catch (e) {}
-  const r = await fetch("/api/data"); const j = await r.json();
+  const r = await fetch("api/data"); const j = await r.json();
+  if (!r.ok) throw new Error(j.error || r.statusText);
   D = j.duration; T = j.transcript; edit = j.edit;
   edit.cuts.forEach(c => { if (c.enabled === undefined) c.enabled = true; });
   sentences = T.sentences;
@@ -1225,9 +1234,10 @@ async function init() {
   words = [];
   for (const s of sentences) for (const w of s.words) { w.gi = words.length; w.sid = s.id; words.push(w); }
   document.title = "粗剪审阅 · " + j.name;
-  $("#title").textContent = j.name; $("#title").title = j.project;
+  $("#title").textContent = j.name;
+  $("#title").title = (j.original && j.original !== j.name ? `FocuSee 工程名：${j.original}\n` : "") + j.project;
   bind(); renderAll();
-  fetch("/api/reorder").then(r => r.json()).then(j => { if (j.state === "running") pollReorder(); }).catch(() => {});
+  fetch("api/reorder").then(r => r.json()).then(j => { if (j.state === "running") pollReorder(); }).catch(() => {});
   try {
     if (localStorage.getItem("fc-hidecut")) { $("#hidecut").checked = true; $("#doc").classList.add("hidecut"); }
     if (localStorage.getItem("fc-view") === "doc") document.querySelector('#view button[data-v="doc"]').click();

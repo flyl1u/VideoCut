@@ -4,7 +4,7 @@
 # ///
 """美颜调参页：用工程里的真实摄像头画面，拖滑块实时看美颜效果，满意了保存成用户预设。
 
-保存位置 %LOCALAPPDATA%/videocut/beauty_preset.json，之后 beauty.py 默认就用它（agent 也直接读这个文件）。
+保存位置 %USERPROFILE%/.videocut/beauty_preset.json，之后 beauty.py 默认就用它（agent 也直接读这个文件）。
 页面只在本机打开（127.0.0.1），画面不会上传到任何地方。
 
 用法：uv run beauty_tuner.py --project "<xxx.focusee>" [--port 8766] [--no-open]

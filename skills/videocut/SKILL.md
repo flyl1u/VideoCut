@@ -10,11 +10,12 @@ description: 粗剪 FocuSee 录屏工程（.focusee）：识别语音后按实�
 ## 关键事实（先读）
 
 - `.focusee` 是文件夹；编辑信息全在 `configure.focuseeproj`（JSON）。剪辑 = `playTracks`（0–1 的源时间比例，段之间的空隙就是剪掉的部分）。缩放、标注、字幕都用**源时间**，所以只改 `playTracks` 和 `subtitles`，其他轨道不动。
-- 工作文件放在 `%LOCALAPPDATA%\videocut\<工程名>-<hash>\`：`transcript.json`、`edit.json`（剪辑方案）、`sentences.txt`、`subtitles.preview.srt`、`proxy.mp4`、`audio.wav`、`silence.json`、`original.focuseeproj`。
+- 数据目录是 `%USERPROFILE%\.videocut`（不用 `%LOCALAPPDATA%`：Claude 桌面版这类商店应用会把写进 AppData 的文件转存到自己的私有目录，换个 agent 或在外面就看不到了）。第一次运行会自动把以前 `%LOCALAPPDATA%\videocut` 里的东西复制过来。
+- 工作文件放在 `%USERPROFILE%\.videocut\<工程名>-<hash>\`：`transcript.json`、`edit.json`（剪辑方案）、`sentences.txt`、`subtitles.preview.srt`、`proxy.mp4`、`audio.wav`、`silence.json`、`original.focuseeproj`。
 - **FocuSee 工程存不了章节**：`configure.focuseeproj` 里没有章节/标记字段（对比过 92 个工程，`annotationTracks` 是叠在画面上、会被导出进视频的文字/箭头/马赛克，不能当章节用）。所以章节只存在 `edit.json → chapters`，每次保存都导出成工作目录里的 `chapters.txt`（成片时间戳），由用户贴进视频简介。
 - 用户在 FocuSee 里手动剪掉的部分**永远不会被恢复**；`sentences.txt` 里用 ✗ 标出，不用管这些句子。
 - 每次写入都会在工程旁边生成 `configure.focuseeproj.bak-时间戳`。
-- 术语表 `%LOCALAPPDATA%\videocut\hotwords.txt`（一行一个标准写法）所有工程共用：识别时作为热词提交，`sentences.txt` 开头也会列出来给你校对时参考。
+- 术语表 `%USERPROFILE%\.videocut\hotwords.txt`（一行一个标准写法）所有工程共用：识别时作为热词提交，`sentences.txt` 开头也会列出来给你校对时参考。
 - 识别用阿里百炼 `fun-asr`，需要环境变量 `DASHSCOPE_API_KEY`，音频会上传到阿里云。**不要替用户输入或打印 key 的值**；没有就让用户自己用 `setx DASHSCOPE_API_KEY "..."` 设置。
 
 ## 剪辑原则（两层判断）
@@ -40,7 +41,7 @@ description: 粗剪 FocuSee 录屏工程（.focusee）：识别语音后按实�
   uv run $S/bg.py stop <名字>
   ```
   `start` 立刻返回；给了 `--until READY` 会等到服务打印出地址再返回并打印那一行。agent 自己有可靠的后台任务功能时也可以直接用，效果一样。
-- **权限**：识别要联网（音频上传到阿里云）、`uv` 第一次要下载依赖、脚本要写工程文件夹和 `%LOCALAPPDATA%\videocut`、审阅页要在 127.0.0.1 开本地端口。在有沙箱的 agent 里（比如 Codex 的默认模式）这些会被拦：按 agent 的方式向用户申请提权或联网后再运行，不要绕开，也不要把工程复制到工作区里改。
+- **权限**：识别要联网（音频上传到阿里云）、`uv` 第一次要下载依赖、脚本要写工程文件夹和 `%USERPROFILE%\.videocut`、审阅页要在 127.0.0.1 开本地端口。在有沙箱的 agent 里（比如 Codex 的默认模式）这些会被拦：按 agent 的方式向用户申请提权或联网后再运行，不要绕开，也不要把工程复制到工作区里改。
 - 向用户提问、确认时直接在回复里问即可（有提问工具就用）；本地网页会自动在用户的默认浏览器里打开，地址同时写进回复。
 
 ## 流程
@@ -57,9 +58,9 @@ uv run $S/bg.py start beauty -- uv run $S/beauty.py --project "$P"        # 有�
 uv run $S/bg.py start ocr -- uv run $S/screen_text.py --project "$P"      # 录屏画面 OCR（本地，不上传），给专有名词校对当证据
 ```
 OCR 结果要在第 4 步校对专有名词前用 `bg.py wait ocr` 等它跑完；美颜不用等，交付时用 `bg.py status beauty` 报告进度（结束时日志最后一行是 `DONE ...`）。
-`beauty.py` 给摄像头画面加美颜（FocuSee 自己只有滤镜没有人脸美颜）：参数用默认预设（`assets/beauty_preset.json`，磨皮 16、美白 5、匀肤 8、祛斑祛痘 100、祛法令纹 9、小脸 23、窄脸 8），用户另有 `%LOCALAPPDATA%\videocut\beauty_preset.json`（调参页保存的）时以它为准。它按原时间戳重新编码 `recording/webcam-0.mp4`，原文件改名为 `webcam-0.original.mp4`，再跑总是从原文件开始（不会叠加），`--restore` 还原，`--preview 60,300` 只出前后对比图（存在工作目录）。替换文件前同样要求 FocuSee 窗口已关。工程没有摄像头录像、或 `camera.isEnable` 是 false 时跳过这步。
+`beauty.py` 给摄像头画面加美颜（FocuSee 自己只有滤镜没有人脸美颜）：参数用默认预设（`assets/beauty_preset.json`，磨皮 16、美白 5、匀肤 8、祛斑祛痘 100、祛法令纹 9、小脸 23、窄脸 8），用户另有 `%USERPROFILE%\.videocut\beauty_preset.json`（调参页保存的）时以它为准。它按原时间戳重新编码 `recording/webcam-0.mp4`，原文件改名为 `webcam-0.original.mp4`，再跑总是从原文件开始（不会叠加），`--restore` 还原，`--preview 60,300` 只出前后对比图（存在工作目录）。替换文件前同样要求 FocuSee 窗口已关。工程没有摄像头录像、或 `camera.isEnable` 是 false 时跳过这步。
 
-**用户觉得美颜怪、想自己调**：启动调参页 `uv run $S/bg.py start tuner --until READY -- uv run $S/beauty_tuner.py --project "$P"`（打印出 `READY http://127.0.0.1:<port>/` 才返回，会自动在默认浏览器打开），把地址告诉用户。页面用美颜前的原始画面实时预览（每次约 0.2 秒），有拖动对比/并排、脸部特写/整个画面、选时间点；参数有磨皮、美白、匀肤、祛斑祛痘、祛法令纹、祛黑眼圈、小脸、瘦脸、窄脸、大眼。用户点「保存为我的预设」后写到 `%LOCALAPPDATA%\videocut\beauty_preset.json`，你直接读这个文件就知道参数，不用让用户报数；之后重跑 `beauty.py`（不加 `--preset`）就会用它，结束时 `bg.py stop tuner`。小脸/窄脸/瘦脸不会挤到眼睛（眼睛眉毛周围有保护），眼睛想大一点用「大眼」。
+**用户觉得美颜怪、想自己调**：启动调参页 `uv run $S/bg.py start tuner --until READY -- uv run $S/beauty_tuner.py --project "$P"`（打印出 `READY http://127.0.0.1:<port>/` 才返回，会自动在默认浏览器打开），把地址告诉用户。页面用美颜前的原始画面实时预览（每次约 0.2 秒），有拖动对比/并排、脸部特写/整个画面、选时间点；参数有磨皮、美白、匀肤、祛斑祛痘、祛法令纹、祛黑眼圈、小脸、瘦脸、窄脸、大眼。用户点「保存为我的预设」后写到 `%USERPROFILE%\.videocut\beauty_preset.json`，你直接读这个文件就知道参数，不用让用户报数；之后重跑 `beauty.py`（不加 `--preset`）就会用它，结束时 `bg.py stop tuner`。小脸/窄脸/瘦脸不会挤到眼睛（眼睛眉毛周围有保护），眼睛想大一点用「大眼」。
 同一份音频有缓存，重复运行不会重复计费；`--force` 强制重识别。
 
 ### 3. 自动剪辑
@@ -134,9 +135,11 @@ uv run $S/apply.py --project "$P"
 
 ### 6. 打开审阅页（一定要给用户）
 ```
-uv run $S/bg.py start review --until READY -- uv run $S/review_server.py --project "$P"   # 打印出 READY http://127.0.0.1:<port>/ 才返回
+uv run $S/workbench.py --project "$P"    # 打印 READY http://127.0.0.1:8765/p/<工作目录名>/ 后马上返回
 ```
-它会自动在用户的默认浏览器里打开审阅页；同时把这个地址写进回复里给用户。页面功能：
+审阅页由 **VideoCut 工作台**提供：一个常驻的本地服务（独立进程，不属于 agent），**用户关掉 Claude Code / Codex 后照样能打开、编辑、保存**。没在运行就自动在后台启动，已经在运行就直接复用（代码更新过会自动换新版本）；不用 `bg.py`，结束时也**不要停掉它**。工作台首页 `http://127.0.0.1:8765/` 列出所有粗剪过的工程（用户可以给工程起显示名，存在 `%USERPROFILE%\.videocut\display_names.json`，键是小写的工程路径；用户用显示名称呼工程时到这里查对应的路径，不要去改 FocuSee 的文件夹名）；用户桌面上的「VideoCut 工作台」快捷方式（`install.ps1` 建的）随时能打开它。
+
+它会自动在用户的默认浏览器里打开这个工程的审阅页；同时把地址写进回复里给用户。页面功能：
 - 视频「剪后预览」自动跳过被剪部分，并叠加显示最终字幕；「原片」显示完整源视频；
 - 时间轴按原因着色，点色块还原/重新剪掉，拖选新增手动剪辑；
 - 字幕列表里点字删/留，Shift+点删/留一段，点 ⏸ 切换气口，左侧方块整句删/留；灰色的「未启用的建议」点一下就启用；
@@ -144,7 +147,7 @@ uv run $S/bg.py start review --until READY -- uv run $S/review_server.py --proje
 - 「逐字稿」视图：全片连成文档读，拖选文字按 Delete 删除（选中的全是已删的就是还原，只还原选中部分），双击一句直接改字幕文字（写 / 强制换行，清空恢复识别原文），单击跳转播放；拖句首的 ⠿ 调换顺序（剪后预览立即按新顺序播放），之后点页头「生成调序工程」；
 - Ctrl+Z 撤销，Ctrl+S 或「保存到工程」写回（同样先备份、检查 FocuSee 进程）。
 
-把汇总告诉用户：原时长 → 剪后时长，各类剪了几处，每条重录判断和理由，校对了多少句字幕（专有名词按语境直接改好，不用逐条列），美颜是否已完成（后台还在跑就说一声），备份文件位置，审阅页地址。
+把汇总告诉用户：原时长 → 剪后时长，各类剪了几处，每条重录判断和理由，校对了多少句字幕（专有名词按语境直接改好，不用逐条列），美颜是否已完成（后台还在跑就说一声），备份文件位置，审阅页地址（并说明关掉 agent 后也能从工作台或桌面快捷方式打开）。
 
 有章节时，把 `chapters.txt` 的内容（`00:00 开场` 这样一行一章，成片时间）原样贴在回复里，告诉用户可以直接粘进 B 站/YouTube 简介，文件在工作目录里；并说明 FocuSee 工程本身存不了章节。用户在审阅页改过章节并保存后，`chapters.txt` 会自动更新，交付前用 `analyze.py chapters` 再取一次最新的。
 
@@ -153,9 +156,10 @@ uv run $S/bg.py start review --until READY -- uv run $S/review_server.py --proje
 - **调换前后顺序要另出新工程**：FocuSee 打开工程时会把 `playTracks` 按时间重新排好（已实测），所以改剪辑轨调不了序；`apply.py`/保存时 moves 不会写进原工程。用户要调序时：
   1. 记录调序：审阅页逐字稿里拖句首 ⠿，或 `analyze.py move --sentences 12-14 --before 3`（`--to-end` 挪到最后，`unmove` 取消）；
   2. 生成：审阅页点「生成调序工程」，或 `uv run $S/bg.py start reorder -- uv run $S/reorder.py --project "$P"`（之后 `bg.py wait reorder --until DONE`，最后一行 `DONE {...}`）。它把录屏、摄像头、麦克风、系统声音按新顺序切开重拼（重新编码：NVIDIA → AMD 核显 AMF → libx264 依次尝试；系统 ffmpeg 太新时 NVIDIA 驱动不支持是正常的），鼠标/按键记录、剪辑轨、字幕、缩放轨都换算到新时间，生成 `<原名> 调序.focusee`（新 uniqueID，原工程不动）；被剪掉的部分也一起挪过去，在 FocuSee 里照样能还原；
-  3. 新工程的逐字稿、剪辑方案、预览视频也换算好了，要接着审阅就对新工程启动 `review_server.py`；新工程的摄像头已经美颜过，不要再跑 `beauty.py`（会拒绝）。大约每分钟素材要几秒到十几秒，占几 GB 空间。
+  3. 新工程的逐字稿、剪辑方案、预览视频也换算好了，生成完审阅页会提示打开新工程的审阅页，工作台首页也会出现它（agent 这边用 `workbench.py --project "<新工程>"` 打开）；新工程的摄像头已经美颜过，不要再跑 `beauty.py`（会拒绝）。大约每分钟素材要几秒到十几秒，占几 GB 空间。
 - 提醒用户：在 FocuSee 里**重新打开**工程才能看到新剪辑和美颜后的摄像头画面；不满意可以把 `.bak-` 文件改回 `configure.focuseeproj` 还原，美颜用 `beauty.py --restore` 还原。
-- 结束时 `bg.py stop review` 停掉审阅服务（美颜还在跑就别停 beauty）。
+- 工作台一直留着给用户用，不要停；美颜还在跑就别停 beauty。用户说关掉工作台时用 `workbench.py --stop`（或工作台首页右上角「退出工作台」）。
+- 用户之后在工作台里自己改过，`edit.json` 就是最新的：再让你改之前先 `analyze.py show` 刷新，不要用你记忆里的旧状态覆盖。
 
 ## 子命令速查（analyze.py）
 
