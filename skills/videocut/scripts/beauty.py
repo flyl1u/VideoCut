@@ -10,11 +10,11 @@ FocuSee 自己没有人脸美颜（它的 Beauty 是音频美化），所以直�
 
 用法：
   uv run beauty.py --project "<xxx.focusee>" --preview 120,300   # 只出对比图，不改工程
-  uv run beauty.py --project "<xxx.focusee>"                     # 处理整段并替换（用 run_in_background）
+  uv run beauty.py --project "<xxx.focusee>"                     # 处理整段并替换（耗时长，用 bg.py 放到后台）
   uv run beauty.py --project "<xxx.focusee>" --restore           # 换回原始摄像头画面
 
 参数（0–100，含义同剪映）：默认读 assets/beauty_preset.json，
-%LOCALAPPDATA%/videocut/beauty.json 存在时以它为准（用户自己的预设）。
+%LOCALAPPDATA%/videocut/beauty_preset.json 存在时以它为准（用户在调参页 beauty_tuner.py 保存的预设）。
 """
 from __future__ import annotations
 
@@ -52,10 +52,18 @@ MOUTH_CORNER = (61, 291)
 UNDER_EYE = ((145, 23, 230), (374, 253, 450))
 
 
+def user_preset_path() -> Path:
+    """用户自己调好的参数（调参页保存到这里）；旧版本叫 beauty.json。"""
+    root = fsproj.data_root()
+    old = root / "beauty.json"
+    new = root / "beauty_preset.json"
+    return old if old.exists() and not new.exists() else new
+
+
 def load_preset(path: str | None) -> dict:
     p = Path(path) if path else None
     if p is None:
-        user = fsproj.data_root() / "beauty.json"
+        user = user_preset_path()
         p = user if user.exists() else PRESET_FILE
     data = json.loads(p.read_text("utf-8"))
     data["_file"] = str(p)
@@ -81,17 +89,24 @@ def odd(x: float, lo: int = 3) -> int:
     return n if n % 2 else n + 1
 
 
+PARAMS = ["smooth", "whiten", "even_skin", "spots", "nasolabial", "dark_circles",
+          "small_face", "thin_face", "narrow_face", "big_eyes"]
+
+
 class Beautifier:
-    def __init__(self, preset: dict):
+    def __init__(self, preset: dict, static: bool = False):
         import mediapipe as mp
-        self.p = {k: float(v) / 100.0 for k, v in preset.items() if isinstance(v, (int, float))}
-        self.mesh = mp.solutions.face_mesh.FaceMesh(static_image_mode=False, max_num_faces=1,
+        self.set_params(preset)
+        self.mesh = mp.solutions.face_mesh.FaceMesh(static_image_mode=static, max_num_faces=1,
                                                     refine_landmarks=False, min_detection_confidence=0.5,
                                                     min_tracking_confidence=0.5)
         self.prev = None  # 平滑后的关键点，减少变形抖动
         self.faces = 0
         self.frames = 0
         self.has_guided = hasattr(cv2, "ximgproc")
+
+    def set_params(self, preset: dict) -> None:
+        self.p = {k: float(v) / 100.0 for k, v in preset.items() if isinstance(v, (int, float))}
 
     def get(self, k: str) -> float:
         return self.p.get(k, 0.0)
@@ -112,9 +127,11 @@ class Beautifier:
         return pts
 
     # ------------------------------------------------------------ 主处理
-    def process(self, bgr: np.ndarray) -> np.ndarray:
+    def process(self, bgr: np.ndarray, pts: np.ndarray | None = None) -> np.ndarray:
+        """pts 给了就直接用（调参页对同一帧反复渲染时不用每次重找关键点）。"""
         self.frames += 1
-        pts = self.landmarks(bgr)
+        if pts is None:
+            pts = self.landmarks(bgr)
         if pts is None:
             return bgr
         self.faces += 1
@@ -131,6 +148,7 @@ class Beautifier:
         lp = pts - np.array([rx0, ry0], np.float32)
         out = self.skin(roi, lp, fw)
         out = self.reshape(out, lp, fw)
+        out = self.enlarge_eyes(out, lp)
         res = bgr.copy()
         res[ry0:ry1, rx0:rx1] = out
         return res
@@ -211,6 +229,25 @@ class Beautifier:
             lab[..., 2] += (blur[..., 2] - lab[..., 2]) * k
             img = cv2.cvtColor(np.clip(lab, 0, 255).astype(np.uint8), cv2.COLOR_LAB2BGR).astype(np.float32)
 
+        # 祛黑眼圈：眼睛下方一小块往周围（脸颊）的亮度提
+        dc = self.get("dark_circles")
+        if dc > 0:
+            lab = cv2.cvtColor(np.clip(img, 0, 255).astype(np.uint8), cv2.COLOR_BGR2LAB).astype(np.float32)
+            band = np.zeros(m.shape, np.float32)
+            ew_all = []
+            for eye in (LEFT_EYE, RIGHT_EYE):
+                e_pts = lp[eye]
+                c = e_pts.mean(0)
+                ew = float(e_pts[:, 0].max() - e_pts[:, 0].min())
+                ew_all.append(ew)
+                cv2.ellipse(band, (int(c[0]), int(c[1] + ew * 0.42)), (int(ew * 0.55), int(ew * 0.22)), 0, 0, 360, 1.0, -1)
+            ew = max(ew_all)
+            band = cv2.GaussianBlur(band, (0, 0), max(1.0, ew * 0.18))
+            ref = cv2.GaussianBlur(lab[..., 0], (0, 0), max(2.0, ew * 0.6))
+            lift = np.clip(ref + 6 - lab[..., 0], 0, None)
+            lab[..., 0] += lift * np.clip(dc * 1.6, 0, 1) * band
+            img = cv2.cvtColor(np.clip(lab, 0, 255).astype(np.uint8), cv2.COLOR_LAB2BGR).astype(np.float32)
+
         # 美白：提亮皮肤，越暗提得越多一点
         wv = self.get("whiten")
         if wv > 0:
@@ -256,9 +293,38 @@ class Beautifier:
         norm = np.maximum(acc_w, 1.0)
         dx = cv2.resize(acc_x / norm, (w, h), interpolation=cv2.INTER_LINEAR)
         dy = cv2.resize(acc_y / norm, (w, h), interpolation=cv2.INTER_LINEAR)
+        # 眼睛和眉毛不跟着收：脸两侧的控制点和眼角差不多高，不保护的话会把眼睛横向挤小
+        keep = np.zeros((h, w), np.uint8)
+        for idx in (LEFT_EYE, RIGHT_EYE, LEFT_BROW, RIGHT_BROW):
+            cv2.fillPoly(keep, [cv2.convexHull(lp[idx].astype(np.int32))], 255)
+        keep = cv2.dilate(keep, cv2.getStructuringElement(cv2.MORPH_ELLIPSE, (odd(fw * 0.16),) * 2))
+        keep = cv2.GaussianBlur(keep.astype(np.float32) / 255, (0, 0), max(1.0, fw * 0.06))
+        dx *= 1 - keep
+        dy *= 1 - keep
         yy, xx = np.mgrid[0:h, 0:w].astype(np.float32)
         # 反向映射：输出像素 x 取原图 x - d 处
         return cv2.remap(roi, xx - dx, yy - dy, cv2.INTER_LINEAR, borderMode=cv2.BORDER_REFLECT)
+
+    def enlarge_eyes(self, roi: np.ndarray, lp: np.ndarray) -> np.ndarray:
+        """大眼：以眼睛中心做局部放大，越靠中心放大越多，边缘平滑过渡到不变。"""
+        k = self.get("big_eyes")
+        if k <= 0:
+            return roi
+        h, w = roi.shape[:2]
+        mx = np.zeros((h, w), np.float32)
+        my = np.zeros((h, w), np.float32)
+        yy, xx = np.mgrid[0:h, 0:w].astype(np.float32)
+        for eye in (LEFT_EYE, RIGHT_EYE):
+            e_pts = lp[eye]
+            c = e_pts.mean(0)
+            R = float(e_pts[:, 0].max() - e_pts[:, 0].min()) * 0.95
+            ddx, ddy = xx - c[0], yy - c[1]
+            d2 = (ddx ** 2 + ddy ** 2) / (R * R)
+            # 采样点往中心缩：s = 1 - a·(1 - d²)²，d≥1 时为 1（不变）
+            s = 1 - k * 0.32 * np.clip(1 - d2, 0, 1) ** 2
+            mx += ddx * (s - 1)
+            my += ddy * (s - 1)
+        return cv2.remap(roi, xx + mx, yy + my, cv2.INTER_LINEAR, borderMode=cv2.BORDER_REFLECT)
 
 
 # ---------------------------------------------------------------- 视频读写

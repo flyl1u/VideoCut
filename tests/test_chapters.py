@@ -10,7 +10,7 @@ from pathlib import Path
 
 os.environ["LOCALAPPDATA"] = tempfile.mkdtemp(prefix="videocut-test-")  # 不读本机的全局词表/术语表
 
-sys.path.insert(0, str(Path(__file__).resolve().parents[1] / ".claude" / "skills" / "videocut" / "scripts"))
+sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "skills" / "videocut" / "scripts"))
 import analyze  # noqa: E402
 import chapters as chap  # noqa: E402
 import reorder  # noqa: E402

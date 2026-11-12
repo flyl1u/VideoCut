@@ -9,7 +9,7 @@ import unittest
 from pathlib import Path
 
 os.environ["LOCALAPPDATA"] = tempfile.mkdtemp(prefix="fc-test-")
-sys.path.insert(0, str(Path(__file__).resolve().parents[1] / ".claude" / "skills" / "videocut" / "scripts"))
+sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "skills" / "videocut" / "scripts"))
 import reorder  # noqa: E402
 
 

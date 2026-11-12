@@ -29,7 +29,19 @@ description: 粗剪 FocuSee 录屏工程（.focusee）：识别语音后按实�
    停顿本身不能证明是重复；文字相似、词表、正则都不能代替语义判断。拿不准就 `confidence: low`（只作建议，不启用），留给用户在审阅页决定。
 3. **画面操作保护**：语义剪辑如果和录制时的鼠标点击/按键重叠，程序默认不启用并在审阅页提示用户。滚动不拦（边讲边滚动页面很常见），只在备注里提一句。只有你能确定这段操作在保留的版本里又做了一遍时，才加 `screen: redundant`。
 
-下面命令里 `$S` 指本 skill 的 `scripts` 目录，`$P` 指工程文件夹的绝对路径。所有脚本都用 `uv run` 运行。
+## 运行约定（任何 agent 都适用）
+
+- 下面命令里 `$S` 指本 skill 的 `scripts` 目录（和这份 SKILL.md 同级的 `scripts` 文件夹，写成绝对路径），`$P` 指工程文件夹的绝对路径（路径里常有空格，一定加引号）。所有脚本都用 `uv run` 运行，依赖第一次运行时自动安装。
+- **耗时命令一律用 `bg.py` 放到后台**（美颜要几小时、预览视频几分钟、审阅服务要一直开着），不要在前台等，也不依赖 agent 自带的后台功能：
+  ```
+  uv run $S/bg.py start <名字> [--until 文本] -- uv run $S/<脚本>.py --project "$P"
+  uv run $S/bg.py status [<名字>]                  # 看进度（最后几行输出）
+  uv run $S/bg.py wait <名字> --until DONE --timeout 600   # 需要结果时再等
+  uv run $S/bg.py stop <名字>
+  ```
+  `start` 立刻返回；给了 `--until READY` 会等到服务打印出地址再返回并打印那一行。agent 自己有可靠的后台任务功能时也可以直接用，效果一样。
+- **权限**：识别要联网（音频上传到阿里云）、`uv` 第一次要下载依赖、脚本要写工程文件夹和 `%LOCALAPPDATA%\videocut`、审阅页要在 127.0.0.1 开本地端口。在有沙箱的 agent 里（比如 Codex 的默认模式）这些会被拦：按 agent 的方式向用户申请提权或联网后再运行，不要绕开，也不要把工程复制到工作区里改。
+- 向用户提问、确认时直接在回复里问即可（有提问工具就用）；本地网页会自动在用户的默认浏览器里打开，地址同时写进回复。
 
 ## 流程
 
@@ -40,11 +52,14 @@ description: 粗剪 FocuSee 录屏工程（.focusee）：识别语音后按实�
 ### 2. 识别 + 预览视频
 ```
 uv run $S/transcribe.py --project "$P"
-uv run $S/make_proxy.py --project "$P"      # 用 run_in_background，不阻塞后续步骤
-uv run $S/beauty.py --project "$P"          # 有摄像头录像时运行，用 run_in_background（实测 16 分钟 720p 录像约 2 小时，先跑起来再做别的）
-uv run $S/screen_text.py --project "$P"     # 录屏画面 OCR（本地，不上传），用 run_in_background，给专有名词校对当证据
+uv run $S/bg.py start proxy -- uv run $S/make_proxy.py --project "$P"     # 审阅用低清预览视频，不阻塞后续步骤
+uv run $S/bg.py start beauty -- uv run $S/beauty.py --project "$P"        # 有摄像头录像时运行（实测 16 分钟 720p 录像约 2 小时，先跑起来再做别的）
+uv run $S/bg.py start ocr -- uv run $S/screen_text.py --project "$P"      # 录屏画面 OCR（本地，不上传），给专有名词校对当证据
 ```
-`beauty.py` 给摄像头画面加美颜（FocuSee 自己只有滤镜没有人脸美颜）：参数用默认预设（`assets/beauty_preset.json`，磨皮 16、美白 5、匀肤 8、祛斑祛痘 100、祛法令纹 9、小脸 23、窄脸 8），用户另有 `%LOCALAPPDATA%\videocut\beauty.json` 时以它为准。它按原时间戳重新编码 `recording/webcam-0.mp4`，原文件改名为 `webcam-0.original.mp4`，再跑总是从原文件开始（不会叠加），`--restore` 还原，`--preview 60,300` 只出前后对比图（存在工作目录）。替换文件前同样要求 FocuSee 窗口已关。工程没有摄像头录像、或 `camera.isEnable` 是 false 时跳过这步。
+OCR 结果要在第 4 步校对专有名词前用 `bg.py wait ocr` 等它跑完；美颜不用等，交付时用 `bg.py status beauty` 报告进度（结束时日志最后一行是 `DONE ...`）。
+`beauty.py` 给摄像头画面加美颜（FocuSee 自己只有滤镜没有人脸美颜）：参数用默认预设（`assets/beauty_preset.json`，磨皮 16、美白 5、匀肤 8、祛斑祛痘 100、祛法令纹 9、小脸 23、窄脸 8），用户另有 `%LOCALAPPDATA%\videocut\beauty_preset.json`（调参页保存的）时以它为准。它按原时间戳重新编码 `recording/webcam-0.mp4`，原文件改名为 `webcam-0.original.mp4`，再跑总是从原文件开始（不会叠加），`--restore` 还原，`--preview 60,300` 只出前后对比图（存在工作目录）。替换文件前同样要求 FocuSee 窗口已关。工程没有摄像头录像、或 `camera.isEnable` 是 false 时跳过这步。
+
+**用户觉得美颜怪、想自己调**：启动调参页 `uv run $S/bg.py start tuner --until READY -- uv run $S/beauty_tuner.py --project "$P"`（打印出 `READY http://127.0.0.1:<port>/` 才返回，会自动在默认浏览器打开），把地址告诉用户。页面用美颜前的原始画面实时预览（每次约 0.2 秒），有拖动对比/并排、脸部特写/整个画面、选时间点；参数有磨皮、美白、匀肤、祛斑祛痘、祛法令纹、祛黑眼圈、小脸、瘦脸、窄脸、大眼。用户点「保存为我的预设」后写到 `%LOCALAPPDATA%\videocut\beauty_preset.json`，你直接读这个文件就知道参数，不用让用户报数；之后重跑 `beauty.py`（不加 `--preset`）就会用它，结束时 `bg.py stop tuner`。小脸/窄脸/瘦脸不会挤到眼睛（眼睛眉毛周围有保护），眼睛想大一点用「大眼」。
 同一份音频有缓存，重复运行不会重复计费；`--force` 强制重识别。
 
 ### 3. 自动剪辑
@@ -119,7 +134,7 @@ uv run $S/apply.py --project "$P"
 
 ### 6. 打开审阅页（一定要给用户）
 ```
-uv run $S/review_server.py --project "$P"   # 用 run_in_background，等输出 READY http://127.0.0.1:<port>/
+uv run $S/bg.py start review --until READY -- uv run $S/review_server.py --project "$P"   # 打印出 READY http://127.0.0.1:<port>/ 才返回
 ```
 它会自动在用户的默认浏览器里打开审阅页；同时把这个地址写进回复里给用户。页面功能：
 - 视频「剪后预览」自动跳过被剪部分，并叠加显示最终字幕；「原片」显示完整源视频；
@@ -137,10 +152,10 @@ uv run $S/review_server.py --project "$P"   # 用 run_in_background，等输出 
 - 用户也可以口头让你改（"第 30 句别剪""把 2:10 到 2:15 剪掉""这句字幕改成…"），用 `restore` / `cut` / `fix` 改 `edit.json` 后重新 `apply.py`；审阅页刷新即可看到。
 - **调换前后顺序要另出新工程**：FocuSee 打开工程时会把 `playTracks` 按时间重新排好（已实测），所以改剪辑轨调不了序；`apply.py`/保存时 moves 不会写进原工程。用户要调序时：
   1. 记录调序：审阅页逐字稿里拖句首 ⠿，或 `analyze.py move --sentences 12-14 --before 3`（`--to-end` 挪到最后，`unmove` 取消）；
-  2. 生成：审阅页点「生成调序工程」，或 `uv run $S/reorder.py --project "$P"`（用 run_in_background，最后一行 `DONE {...}`）。它把录屏、摄像头、麦克风、系统声音按新顺序切开重拼（重新编码：NVIDIA → AMD 核显 AMF → libx264 依次尝试；系统 ffmpeg 太新时 NVIDIA 驱动不支持是正常的），鼠标/按键记录、剪辑轨、字幕、缩放轨都换算到新时间，生成 `<原名> 调序.focusee`（新 uniqueID，原工程不动）；被剪掉的部分也一起挪过去，在 FocuSee 里照样能还原；
+  2. 生成：审阅页点「生成调序工程」，或 `uv run $S/bg.py start reorder -- uv run $S/reorder.py --project "$P"`（之后 `bg.py wait reorder --until DONE`，最后一行 `DONE {...}`）。它把录屏、摄像头、麦克风、系统声音按新顺序切开重拼（重新编码：NVIDIA → AMD 核显 AMF → libx264 依次尝试；系统 ffmpeg 太新时 NVIDIA 驱动不支持是正常的），鼠标/按键记录、剪辑轨、字幕、缩放轨都换算到新时间，生成 `<原名> 调序.focusee`（新 uniqueID，原工程不动）；被剪掉的部分也一起挪过去，在 FocuSee 里照样能还原；
   3. 新工程的逐字稿、剪辑方案、预览视频也换算好了，要接着审阅就对新工程启动 `review_server.py`；新工程的摄像头已经美颜过，不要再跑 `beauty.py`（会拒绝）。大约每分钟素材要几秒到十几秒，占几 GB 空间。
 - 提醒用户：在 FocuSee 里**重新打开**工程才能看到新剪辑和美颜后的摄像头画面；不满意可以把 `.bak-` 文件改回 `configure.focuseeproj` 还原，美颜用 `beauty.py --restore` 还原。
-- 结束时停掉后台的 `review_server.py`。
+- 结束时 `bg.py stop review` 停掉审阅服务（美颜还在跑就别停 beauty）。
 
 ## 子命令速查（analyze.py）
 

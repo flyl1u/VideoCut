@@ -1,0 +1,269 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>美颜调参</title>
+<style>
+:root {
+  --bg: #f6f6f4; --panel: #ffffff; --ink: #1d1d1b; --muted: #6b6b66; --line: #e3e2dd;
+  --accent: #2f6fdb; --accent-ink: #ffffff; --hover: #efeee9; --changed: #e5a00d;
+  --shadow: 0 1px 2px rgba(0,0,0,.06), 0 4px 16px rgba(0,0,0,.05);
+}
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme="light"]) {
+    --bg: #161615; --panel: #1f1f1d; --ink: #ecebe6; --muted: #9a9993; --line: #33322f;
+    --accent: #5b93f0; --hover: #2a2a27; --shadow: 0 1px 2px rgba(0,0,0,.4);
+  }
+}
+:root[data-theme="dark"] {
+  --bg: #161615; --panel: #1f1f1d; --ink: #ecebe6; --muted: #9a9993; --line: #33322f;
+  --accent: #5b93f0; --hover: #2a2a27; --shadow: 0 1px 2px rgba(0,0,0,.4);
+}
+* { box-sizing: border-box; }
+html, body { margin: 0; background: var(--bg); color: var(--ink);
+  font: 14px/1.6 system-ui, -apple-system, "Microsoft YaHei UI", "PingFang SC", sans-serif; }
+button, input { font: inherit; color: inherit; }
+body { display: flex; flex-direction: column; min-height: 100vh; }
+header { position: sticky; top: 0; z-index: 10; background: var(--panel); border-bottom: 1px solid var(--line);
+  display: flex; gap: 12px; align-items: center; padding: 10px 16px; flex-wrap: wrap; }
+header h1 { font-size: 15px; margin: 0; font-weight: 600; }
+.sub { color: var(--muted); font-size: 12px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; max-width: 40ch; }
+.spacer { flex: 1; }
+.status { color: var(--muted); font-size: 12px; font-variant-numeric: tabular-nums; min-width: 9em; text-align: right; }
+.btn { border: 1px solid var(--line); background: var(--panel); border-radius: 8px; padding: 5px 12px; cursor: pointer; }
+.btn:hover:not(:disabled) { background: var(--hover); }
+.btn:disabled { opacity: .45; cursor: default; }
+.btn.primary { background: var(--accent); border-color: var(--accent); color: var(--accent-ink); }
+.btn.primary:hover:not(:disabled) { filter: brightness(1.08); }
+.seg { display: inline-flex; border: 1px solid var(--line); border-radius: 8px; overflow: hidden; }
+.seg button { border: 0; background: transparent; padding: 4px 11px; cursor: pointer; }
+.seg button.on { background: var(--accent); color: var(--accent-ink); }
+
+main { flex: 1; display: grid; grid-template-columns: 320px 1fr; gap: 16px; padding: 16px; min-height: 0; }
+.panel { background: var(--panel); border: 1px solid var(--line); border-radius: 12px; box-shadow: var(--shadow); }
+.controls { padding: 6px 16px 14px; align-self: start; position: sticky; top: 64px; max-height: calc(100vh - 80px); overflow: auto; }
+.controls h2 { font-size: 12px; font-weight: 600; color: var(--muted); margin: 14px 0 4px; letter-spacing: .04em; }
+.row { display: grid; grid-template-columns: 5.5em 1fr 3.9em; align-items: center; gap: 10px; padding: 5px 0; }
+.row label { cursor: pointer; user-select: none; }
+.row label.changed::after { content: "•"; color: var(--changed); margin-left: 3px; }
+.row input[type=range] { width: 100%; accent-color: var(--accent); }
+.row input[type=number] { width: 100%; border: 1px solid var(--line); background: var(--bg); border-radius: 6px;
+  padding: 2px 4px; text-align: right; font-variant-numeric: tabular-nums; }
+.hint { color: var(--muted); font-size: 12px; margin: 12px 0 0; line-height: 1.6; }
+.hint code { font-size: 11px; word-break: break-all; }
+
+.stage { display: flex; flex-direction: column; gap: 12px; min-width: 0; }
+.toolbar { display: flex; gap: 10px; align-items: center; flex-wrap: wrap; padding: 10px 14px; }
+.toolbar .lbl { color: var(--muted); font-size: 12px; }
+.view { position: relative; padding: 12px; display: flex; justify-content: center; align-items: center; min-height: 360px; }
+.pair { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; width: 100%; }
+.pair figure { margin: 0; position: relative; }
+.pair img, .split img { width: 100%; display: block; border-radius: 8px; background: #000; }
+.cap { position: absolute; left: 8px; top: 8px; font-size: 12px; padding: 1px 8px; border-radius: 6px;
+  background: rgba(0,0,0,.55); color: #fff; pointer-events: none; }
+.split { position: relative; width: min(100%, 760px); user-select: none; touch-action: none; cursor: ew-resize; }
+.split .top { position: absolute; inset: 0; overflow: hidden; }
+.split .top img { height: 100%; width: auto; max-width: none; }
+.split .bar { position: absolute; top: 0; bottom: 0; width: 2px; background: #fff; box-shadow: 0 0 0 1px rgba(0,0,0,.25); }
+.split .bar::after { content: "⇆"; position: absolute; top: 50%; left: 50%; transform: translate(-50%,-50%);
+  background: #fff; color: #333; border-radius: 50%; width: 26px; height: 26px; display: grid; place-items: center; font-size: 14px; }
+.split .cap.r { left: auto; right: 8px; }
+.busy { position: absolute; right: 18px; bottom: 18px; font-size: 12px; color: var(--muted); }
+.timeline { display: flex; gap: 10px; align-items: center; padding: 10px 14px; flex-wrap: wrap; }
+.timeline input[type=range] { flex: 1; min-width: 160px; accent-color: var(--accent); }
+.chips { display: flex; gap: 6px; flex-wrap: wrap; }
+.chips button { border: 1px solid var(--line); background: var(--panel); border-radius: 999px; padding: 1px 10px; cursor: pointer; font-size: 12px; }
+.chips button.on { border-color: var(--accent); color: var(--accent); }
+.toast { position: fixed; left: 50%; bottom: 24px; transform: translateX(-50%) translateY(20px); opacity: 0; transition: .2s;
+  background: var(--ink); color: var(--bg); padding: 8px 14px; border-radius: 8px; white-space: pre-line; max-width: 90vw; z-index: 50; }
+.toast.show { opacity: 1; transform: translateX(-50%); }
+.noface { color: #c0392b; font-size: 12px; }
+[hidden] { display: none !important; }
+
+@media (max-width: 860px) {
+  main { grid-template-columns: 1fr; padding: 12px 16px; }
+  .controls { position: static; max-height: none; }
+  .pair { grid-template-columns: 1fr; }
+}
+</style>
+</head>
+<body>
+<header>
+  <h1>美颜调参</h1>
+  <span class="sub" id="sub"></span>
+  <div class="spacer"></div>
+  <span class="status" id="status">加载中…</span>
+  <button class="btn" id="theme" title="切换深浅色">◐</button>
+  <button class="btn" id="reset" title="回到内置默认参数">恢复默认</button>
+  <button class="btn" id="revert" title="回到上次保存的参数">撤销改动</button>
+  <button class="btn primary" id="save" title="保存后 beauty.py 默认使用这组参数">保存为我的预设</button>
+</header>
+<main>
+  <aside class="panel controls" id="controls"></aside>
+  <section class="stage">
+    <div class="panel toolbar">
+      <span class="lbl">对比</span>
+      <div class="seg" id="mode"><button data-v="split" class="on">拖动对比</button><button data-v="pair">并排</button></div>
+      <span class="lbl">画面</span>
+      <div class="seg" id="view"><button data-v="face" class="on">脸部特写</button><button data-v="full">整个画面</button></div>
+      <label class="lbl" title="只翻转预览画面，像照镜子一样；不影响工程"><input type="checkbox" id="mirror" checked> 镜像</label>
+      <span class="noface" id="noface" hidden>这一帧没找到人脸，换个时间点试试</span>
+    </div>
+    <div class="panel view" id="viewbox">
+      <div class="split" id="split">
+        <img id="sAfter" alt="美颜后">
+        <div class="top" id="sTop"><img id="sBefore" alt="原图"></div>
+        <div class="bar" id="sBar"></div>
+        <span class="cap">原图</span><span class="cap r">美颜后</span>
+      </div>
+      <div class="pair" id="pair" hidden>
+        <figure><img id="pBefore" alt="原图"><span class="cap">原图</span></figure>
+        <figure><img id="pAfter" alt="美颜后"><span class="cap">美颜后</span></figure>
+      </div>
+      <span class="busy" id="busy" hidden>渲染中…</span>
+    </div>
+    <div class="panel timeline">
+      <span class="lbl">时间</span>
+      <input type="range" id="time" min="0" max="100" step="0.5" value="0">
+      <span id="tlabel" style="font-variant-numeric: tabular-nums; min-width: 4em;">0:00</span>
+      <div class="chips" id="chips"></div>
+      <button class="btn" id="shuffle" title="随机跳到另一帧">🎲 换一帧</button>
+    </div>
+  </section>
+</main>
+<div class="toast" id="toast"></div>
+<script>
+const $ = (s) => document.querySelector(s);
+const LABELS = {
+  smooth: ["磨皮", "皮肤"], whiten: ["美白", "皮肤"], even_skin: ["匀肤", "皮肤"], spots: ["祛斑祛痘", "皮肤"],
+  nasolabial: ["祛法令纹", "皮肤"], dark_circles: ["祛黑眼圈", "皮肤"],
+  small_face: ["小脸", "脸型"], thin_face: ["瘦脸", "脸型"], narrow_face: ["窄脸", "脸型"], big_eyes: ["大眼", "脸型"],
+};
+let info, params = {}, saved = {}, t = 0, mode = "split", view = "face", seq = 0, timer = null, splitPos = 0.5;
+const fmt = (s) => `${Math.floor(s / 60)}:${String(Math.floor(s % 60)).padStart(2, "0")}`;
+function toast(msg, ms = 3000) { const el = $("#toast"); el.textContent = msg; el.classList.add("show"); clearTimeout(toast._t); toast._t = setTimeout(() => el.classList.remove("show"), ms); }
+
+function buildControls() {
+  let h = "", group = "";
+  for (const k of info.params) {
+    const [name, g] = LABELS[k] || [k, "其他"];
+    if (g !== group) { h += `<h2>${g}</h2>`; group = g; }
+    h += `<div class="row"><label for="r-${k}" data-k="${k}" title="双击恢复默认值">${name}</label>` +
+      `<input type="range" id="r-${k}" data-k="${k}" min="0" max="100" step="1">` +
+      `<input type="number" id="n-${k}" data-k="${k}" min="0" max="100" step="1"></div>`;
+  }
+  h += `<p class="hint">拖滑块实时预览（用的是美颜前的原始画面）。双击参数名恢复默认值。<br>保存后写到 <code>${info.preset_file}</code>，之后美颜默认用这组参数，告诉 Claude「按我的预设重新美颜」即可。</p>`;
+  $("#controls").innerHTML = h;
+  $("#controls").addEventListener("input", (e) => {
+    const k = e.target.dataset.k; if (!k) return;
+    setParam(k, e.target.value);
+  });
+  $("#controls").addEventListener("dblclick", (e) => {
+    const k = e.target.closest("label")?.dataset.k; if (!k) return;
+    setParam(k, info.default[k]);
+  });
+}
+function setParam(k, v) {
+  params[k] = Math.max(0, Math.min(100, Math.round(+v || 0)));
+  syncControls(); schedule();
+}
+function syncControls() {
+  for (const k of info.params) {
+    $(`#r-${k}`).value = params[k]; $(`#n-${k}`).value = params[k];
+    document.querySelector(`label[data-k="${k}"]`).classList.toggle("changed", params[k] !== saved[k]);
+  }
+  const dirty = info.params.some(k => params[k] !== saved[k]);
+  $("#revert").disabled = !dirty;
+  $("#save").textContent = dirty || !info.has_user_preset ? "保存为我的预设" : "已保存";
+}
+function schedule(delay = 120) { clearTimeout(timer); timer = setTimeout(render, delay); }
+
+async function render() {
+  const my = ++seq;
+  $("#busy").hidden = false;
+  try {
+    const r = await fetch("/api/render", { method: "POST", headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ t, params, view, mirror: $("#mirror").checked }) });
+    const j = await r.json();
+    if (my !== seq) return; // 已经有更新的请求了
+    if (!r.ok) throw new Error(j.error || r.statusText);
+    for (const id of ["sBefore", "pBefore"]) $("#" + id).src = j.before;
+    for (const id of ["sAfter", "pAfter"]) $("#" + id).src = j.after;
+    $("#noface").hidden = j.face;
+    $("#status").textContent = `渲染 ${j.ms} ms`;
+    requestAnimationFrame(layoutSplit);
+  } catch (e) {
+    if (my === seq) $("#status").textContent = "出错：" + e.message;
+  } finally { if (my === seq) $("#busy").hidden = true; }
+}
+
+// 拖动对比：左边原图、右边美颜后
+function layoutSplit() {
+  const box = $("#split"), w = box.clientWidth;
+  $("#sTop").style.width = (splitPos * w) + "px";
+  $("#sBefore").style.width = w + "px"; $("#sBefore").style.height = $("#sAfter").clientHeight + "px";
+  $("#sBar").style.left = (splitPos * w - 1) + "px";
+}
+function bindSplit() {
+  const box = $("#split");
+  const move = (e) => { const r = box.getBoundingClientRect(); splitPos = Math.max(0, Math.min(1, (e.clientX - r.left) / r.width)); layoutSplit(); };
+  box.addEventListener("pointerdown", (e) => { box.setPointerCapture(e.pointerId); move(e); });
+  box.addEventListener("pointermove", (e) => { if (e.buttons) move(e); });
+  window.addEventListener("resize", layoutSplit);
+}
+
+function setTime(v) {
+  t = Math.max(0, Math.min(info.duration - 0.2, +v));
+  $("#time").value = t; $("#tlabel").textContent = fmt(t);
+  document.querySelectorAll("#chips button").forEach(b => b.classList.toggle("on", Math.abs(+b.dataset.t - t) < 0.3));
+  schedule(60);
+}
+
+async function save() {
+  const name = info.has_user_preset ? undefined : "我的预设";
+  const r = await fetch("/api/save", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ params, name }) });
+  const j = await r.json();
+  if (!r.ok) { toast("保存失败：" + (j.error || r.statusText), 5000); return; }
+  saved = { ...params }; info.has_user_preset = true; syncControls();
+  toast("已保存：" + j.saved + "\n回到 Claude 说「按我的预设重新美颜」就会用这组参数。", 6000);
+}
+
+async function init() {
+  try { const th = localStorage.getItem("fc-theme"); if (th) document.documentElement.dataset.theme = th; } catch (e) {}
+  info = await (await fetch("/api/info")).json();
+  $("#sub").textContent = info.project.split(/[\\/]/).pop() + " · " + info.source;
+  $("#sub").title = info.project;
+  params = { ...info.current }; saved = { ...info.current };
+  buildControls(); syncControls(); bindSplit();
+  const D = info.duration;
+  $("#time").max = Math.max(1, D - 0.2);
+  $("#chips").innerHTML = [0.1, 0.3, 0.5, 0.7, 0.9].map(f => `<button data-t="${(D * f).toFixed(1)}">${fmt(D * f)}</button>`).join("");
+  $("#chips").addEventListener("click", (e) => { const b = e.target.closest("button"); if (b) setTime(b.dataset.t); });
+  $("#time").addEventListener("input", (e) => setTime(e.target.value));
+  try { if (localStorage.getItem("fc-mirror") === "0") $("#mirror").checked = false; } catch (e) {}
+  $("#mirror").addEventListener("change", (e) => { try { localStorage.setItem("fc-mirror", e.target.checked ? "1" : "0"); } catch (x) {} schedule(0); });
+  $("#shuffle").onclick = () => { let v; do { v = Math.random() * (D - 1); } while (Math.abs(v - t) < D * 0.05); setTime(v); };
+  for (const [id, set] of [["#mode", (v) => { mode = v; $("#split").hidden = v !== "split"; $("#pair").hidden = v !== "pair"; requestAnimationFrame(layoutSplit); }],
+                           ["#view", (v) => { view = v; schedule(0); }]]) {
+    $(id).addEventListener("click", (e) => {
+      const b = e.target.closest("button"); if (!b) return;
+      $(id).querySelectorAll("button").forEach(x => x.classList.toggle("on", x === b)); set(b.dataset.v);
+    });
+  }
+  $("#reset").onclick = () => { params = { ...info.default }; syncControls(); schedule(0); };
+  $("#revert").onclick = () => { params = { ...saved }; syncControls(); schedule(0); };
+  $("#save").onclick = save;
+  $("#theme").onclick = () => {
+    const cur = document.documentElement.dataset.theme || (matchMedia("(prefers-color-scheme: dark)").matches ? "dark" : "light");
+    const nx = cur === "dark" ? "light" : "dark"; document.documentElement.dataset.theme = nx;
+    try { localStorage.setItem("fc-theme", nx); } catch (e) {}
+  };
+  $("#sAfter").addEventListener("load", layoutSplit);
+  setTime(D * 0.3);
+}
+window.addEventListener("beforeunload", (e) => { if (info && info.params.some(k => params[k] !== saved[k])) { e.preventDefault(); e.returnValue = ""; } });
+init();
+</script>
+</body>
+</html>

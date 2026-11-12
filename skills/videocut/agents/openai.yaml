@@ -1,0 +1,4 @@
+interface:
+  display_name: "VideoCut"
+  short_description: "按逐字稿粗剪 FocuSee 录屏：剪气口、语气词和口误重录，校对字幕，写回工程"
+  default_prompt: "帮我粗剪最新的 FocuSee 工程"
