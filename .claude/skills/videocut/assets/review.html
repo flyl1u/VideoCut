@@ -1,0 +1,979 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>粗剪审阅</title>
+<style>
+:root {
+  --bg: #f6f6f4; --panel: #ffffff; --ink: #1d1d1b; --muted: #6b6b66; --line: #e3e2dd;
+  --accent: #2f6fdb; --accent-ink: #ffffff; --hover: #efeee9; --now: #fff3c4;
+  --pause: #4c8df6; --filler: #e5a00d; --retake: #e04b4b; --manual: #8d5cd6; --base: #9a9a94;
+  --keep: #3aa76d; --cut-ink: #a3a29c; --shadow: 0 1px 2px rgba(0,0,0,.06), 0 4px 16px rgba(0,0,0,.05);
+}
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme="light"]) {
+    --bg: #161615; --panel: #1f1f1d; --ink: #ecebe6; --muted: #9a9993; --line: #33322f;
+    --accent: #5b93f0; --hover: #2a2a27; --now: #4a4120; --cut-ink: #6c6b66;
+    --shadow: 0 1px 2px rgba(0,0,0,.4);
+  }
+}
+:root[data-theme="dark"] {
+  --bg: #161615; --panel: #1f1f1d; --ink: #ecebe6; --muted: #9a9993; --line: #33322f;
+  --accent: #5b93f0; --hover: #2a2a27; --now: #4a4120; --cut-ink: #6c6b66;
+  --shadow: 0 1px 2px rgba(0,0,0,.4);
+}
+* { box-sizing: border-box; }
+html, body { margin: 0; background: var(--bg); color: var(--ink);
+  font: 14px/1.6 system-ui, -apple-system, "Microsoft YaHei UI", "PingFang SC", sans-serif; }
+button { font: inherit; color: inherit; }
+header { position: sticky; top: 0; z-index: 10; background: var(--panel); border-bottom: 1px solid var(--line);
+  display: flex; gap: 16px; align-items: center; padding: 10px 16px; flex-wrap: wrap; }
+header h1 { font-size: 15px; margin: 0; font-weight: 600; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; max-width: 32ch; }
+.stats { display: flex; gap: 14px; color: var(--muted); font-variant-numeric: tabular-nums; flex-wrap: wrap; }
+.stats b { color: var(--ink); font-weight: 600; }
+.spacer { flex: 1; }
+.btn { border: 1px solid var(--line); background: var(--panel); border-radius: 8px; padding: 5px 12px; cursor: pointer; }
+.btn:hover:not(:disabled) { background: var(--hover); }
+.btn:disabled { opacity: .45; cursor: default; }
+.btn.primary { background: var(--accent); border-color: var(--accent); color: var(--accent-ink); }
+.btn.primary:hover:not(:disabled) { filter: brightness(1.08); background: var(--accent); }
+.seg { display: inline-flex; border: 1px solid var(--line); border-radius: 8px; overflow: hidden; }
+.seg button { border: 0; background: transparent; padding: 5px 12px; cursor: pointer; }
+.seg button.on { background: var(--accent); color: var(--accent-ink); }
+/* 桌面：一屏布局。上面是视频 + 字幕列表（列表自己滚动），下面是通栏的大时间轴 */
+body { display: flex; flex-direction: column; min-height: 100vh; }
+main { flex: 1; display: grid; grid-template-columns: minmax(0, 1.25fr) minmax(0, 1fr);
+  grid-template-rows: minmax(0, 1fr) auto; grid-template-areas: "player list" "tl tl"; gap: 12px 16px; padding: 12px 16px 16px; }
+.card { background: var(--panel); border: 1px solid var(--line); border-radius: 12px; box-shadow: var(--shadow); }
+.left { grid-area: player; display: flex; flex-direction: column; min-height: 0; }
+.right { grid-area: list; }
+.tlcard { grid-area: tl; }
+.player { overflow: hidden; display: flex; flex-direction: column; min-height: 0; flex: 1; }
+#vbox { flex: 1; min-height: 0; background: #000; display: flex; }
+.player video { display: block; width: 100%; height: 100%; background: #000; object-fit: contain; }
+.placeholder { flex: 1; display: grid; place-items: center; color: var(--muted); background: var(--hover); text-align: center; padding: 16px; }
+@media (min-width: 961px) {
+  body { height: 100vh; overflow: hidden; }
+  main { min-height: 0; }
+}
+@media (max-width: 960px) {
+  main { grid-template-columns: minmax(0, 1fr); grid-template-rows: auto; grid-template-areas: "player" "tl" "list"; }
+  #vbox { aspect-ratio: 16 / 10; flex: none; }
+  .right .list { max-height: none; }
+}
+.ctrl { display: flex; align-items: center; gap: 10px; padding: 8px 12px; flex-wrap: wrap; font-variant-numeric: tabular-nums; }
+.ctrl .time { color: var(--muted); }
+.tl-wrap { padding: 10px 12px 12px; }
+.tl-head { display: flex; align-items: center; gap: 10px; color: var(--muted); font-size: 12px; margin-bottom: 6px; flex-wrap: wrap; }
+.legend { display: flex; gap: 10px; flex-wrap: wrap; }
+.legend i { display: inline-block; width: 10px; height: 10px; border-radius: 2px; margin-right: 4px; vertical-align: -1px; }
+.tl-scroll { overflow-x: auto; border: 1px solid var(--line); border-radius: 8px; }
+.tl { position: relative; height: 132px; min-width: 100%; cursor: crosshair; user-select: none; }
+.tl .row { position: absolute; left: 0; right: 0; }
+.tl .r-keep { top: 6px; height: 18px; }
+.tl .r0 { top: 34px; height: 28px; } .tl .r1 { top: 66px; height: 28px; } .tl .r2 { top: 98px; height: 28px; }
+.tl .blk { position: absolute; top: 0; bottom: 0; border-radius: 2px; min-width: 2px; cursor: pointer; }
+.tl .blk.off { background: transparent !important; outline: 1px dashed var(--muted); outline-offset: -1px; opacity: .8; }
+.tl .blk:hover { filter: brightness(1.15); outline: 1px solid var(--ink); }
+.tl .keep { position: absolute; top: 0; bottom: 0; background: var(--keep); border-radius: 2px; }
+.tl .basecut { position: absolute; top: 0; bottom: 0;
+  background: repeating-linear-gradient(45deg, var(--base) 0 3px, transparent 3px 6px); opacity: .5; pointer-events: none; }
+.tl .ph { position: absolute; top: 0; bottom: 0; width: 2px; background: var(--ink); pointer-events: none; }
+.tl .sel { position: absolute; top: 30px; bottom: 3px; background: color-mix(in srgb, var(--manual) 35%, transparent); border: 1px solid var(--manual); pointer-events: none; }
+.pause { background: var(--pause); } .filler { background: var(--filler); } .retake { background: var(--retake); } .manual { background: var(--manual); }
+.tips { color: var(--muted); font-size: 12px; padding: 0 12px 12px; }
+.tips kbd { border: 1px solid var(--line); border-bottom-width: 2px; border-radius: 4px; padding: 0 4px; font-size: 11px; }
+.right { display: flex; flex-direction: column; min-height: 0; overflow: hidden; }
+.right .list { flex: 1; min-height: 0; overflow-y: auto; }
+.filters { display: flex; gap: 6px; padding: 10px 12px; border-bottom: 1px solid var(--line); flex-wrap: wrap; align-items: center; }
+.chip { border: 1px solid var(--line); border-radius: 999px; padding: 2px 10px; cursor: pointer; background: transparent; font-size: 13px; }
+.chip.on { background: var(--ink); color: var(--panel); border-color: var(--ink); }
+.list { padding: 4px 0; }
+.sent { display: grid; grid-template-columns: 64px 26px minmax(0, 1fr); gap: 6px; padding: 6px 12px; border-left: 3px solid transparent; }
+.sent:hover { background: var(--hover); }
+.sent.now { border-left-color: var(--accent); background: color-mix(in srgb, var(--accent) 7%, transparent); }
+.sent .t { color: var(--muted); font-variant-numeric: tabular-nums; cursor: pointer; font-size: 12px; padding-top: 2px; }
+.sent .t:hover { color: var(--accent); }
+.sent .tog { width: 22px; height: 22px; border-radius: 6px; border: 1px solid var(--line); background: var(--panel); cursor: pointer; padding: 0; line-height: 1; margin-top: 1px; }
+.sent .tog.cut { background: var(--retake); border-color: var(--retake); color: #fff; }
+.sent .tog.part { background: linear-gradient(135deg, var(--retake) 50%, var(--panel) 50%); }
+.words { font-size: 15px; line-height: 1.9; word-break: break-all; }
+.w { cursor: pointer; border-radius: 3px; padding: 1px 0; }
+.w:hover { background: var(--hover); outline: 1px solid var(--line); }
+.w.cut { color: var(--cut-ink); text-decoration: line-through; text-decoration-thickness: 1.5px; }
+.w.cut.r-filler { text-decoration-color: var(--filler); } .w.cut.r-retake { text-decoration-color: var(--retake); }
+.w.cut.r-manual { text-decoration-color: var(--manual); } .w.cut.r-pause { text-decoration-color: var(--pause); }
+.w.cut.r-base { text-decoration-color: var(--base); cursor: not-allowed; }
+.w.cur { background: var(--now); }
+.w.anchor { outline: 1px solid var(--accent); }
+.gap { display: inline-block; font-size: 11px; line-height: 1.3; padding: 0 4px; margin: 0 2px; border-radius: 4px; cursor: pointer;
+  border: 1px solid var(--line); color: var(--muted); vertical-align: 1px; font-variant-numeric: tabular-nums; }
+.gap.cut { background: color-mix(in srgb, var(--pause) 18%, transparent); border-color: var(--pause); color: var(--pause); text-decoration: line-through; }
+.gap.r-filler { border-color: var(--filler); color: var(--filler); background: color-mix(in srgb, var(--filler) 15%, transparent); }
+.note { grid-column: 3; font-size: 12px; color: var(--retake); }
+.note.n-manual { color: var(--manual); }
+.note.off { color: var(--muted); cursor: pointer; }
+.note.off:hover { color: var(--ink); text-decoration: underline; }
+.note.fix { color: var(--accent); }
+#vbox { position: relative; }
+.subov { position: absolute; left: 50%; bottom: 5%; transform: translateX(-50%); max-width: 92%; pointer-events: none;
+  background: rgba(0, 0, 0, .72); color: #fff; border-radius: 6px; padding: 1px 12px; text-align: center;
+  font-size: clamp(13px, 2.1vw, 22px); line-height: 1.45; white-space: nowrap; }
+.subov:empty { display: none; }
+.toast { position: fixed; left: 50%; bottom: 24px; transform: translateX(-50%); background: var(--ink); color: var(--panel);
+  padding: 10px 16px; border-radius: 10px; box-shadow: var(--shadow); max-width: min(680px, calc(100vw - 32px)); z-index: 50;
+  opacity: 0; transition: opacity .2s; pointer-events: none; white-space: pre-line; }
+.toast.show { opacity: 1; }
+.dirty { color: var(--filler); font-size: 12px; }
+.empty { padding: 24px; color: var(--muted); text-align: center; }
+/* 逐字稿：像文档一样连着读，选中一段按 Delete 删除，双击一句改字 */
+.doc { flex: 1; min-height: 0; overflow-y: auto; padding: 14px 18px 40px; font-size: 16px; line-height: 2.05; }
+.doc p { margin: 0 0 14px; }
+.ds { border-radius: 4px; }
+.ds:hover { background: var(--hover); }
+.ds.fixed { text-decoration: underline dotted color-mix(in srgb, var(--accent) 60%, transparent); text-underline-offset: 5px; }
+.ds.base { opacity: .4; }
+.dt { border-radius: 3px; }
+.dt.cut { color: var(--cut-ink); text-decoration: line-through; text-decoration-thickness: 1.5px; }
+.dt.cut.r-filler { text-decoration-color: var(--filler); } .dt.cut.r-retake { text-decoration-color: var(--retake); }
+.dt.cut.r-manual { text-decoration-color: var(--manual); } .dt.cut.r-pause { text-decoration-color: var(--pause); }
+.dt.cur { background: var(--now); }
+.doc.hidecut .dt.cut, .doc.hidecut .ds.base { display: none; }
+.dedit { font: inherit; width: 100%; padding: 4px 8px; border: 1px solid var(--accent); border-radius: 6px; background: var(--panel); color: var(--ink); }
+.dbar { position: fixed; z-index: 40; display: flex; gap: 4px; padding: 4px; background: var(--panel); border: 1px solid var(--line);
+  border-radius: 10px; box-shadow: var(--shadow); }
+.dbar[hidden] { display: none; }
+.dbar button { border: 0; background: transparent; padding: 4px 10px; border-radius: 6px; cursor: pointer; font-size: 13px; white-space: nowrap; }
+.dbar button:hover:not(:disabled) { background: var(--hover); }
+.dbar button:disabled { opacity: .4; cursor: default; }
+.dbar .danger { color: var(--retake); }
+.grip { display: inline-block; width: 1.1em; margin-right: 2px; text-align: center; color: var(--muted); cursor: grab;
+  opacity: 0; user-select: none; font-size: 13px; border-radius: 3px; vertical-align: 1px; }
+.ds:hover .grip, .ds.moved .grip { opacity: .9; }
+.grip:hover { background: var(--hover); color: var(--accent); }
+.ds.moved { background: color-mix(in srgb, var(--manual) 10%, transparent); box-shadow: inset 2px 0 0 var(--manual); padding-left: 3px; }
+.ds.dragging { opacity: .35; }
+.mvx { display: inline-block; font-size: 11px; line-height: 1.4; padding: 0 5px; margin: 0 3px; border-radius: 4px; cursor: pointer;
+  color: var(--manual); border: 1px solid color-mix(in srgb, var(--manual) 50%, transparent); vertical-align: 2px; user-select: none; }
+.mvx:hover { background: var(--manual); color: #fff; }
+.dropmark { position: fixed; width: 3px; background: var(--manual); border-radius: 2px; pointer-events: none; z-index: 30; }
+.dropmark[hidden] { display: none; }
+.tl .keep.moved { background: var(--manual); }
+.note.n-move { color: var(--manual); cursor: pointer; }
+.note.n-move:hover { text-decoration: underline; }
+.doc-help { font-size: 12px; color: var(--muted); padding: 8px 18px 0; }
+.doc-help kbd { border: 1px solid var(--line); border-bottom-width: 2px; border-radius: 4px; padding: 0 4px; font-size: 11px; }
+[hidden] { display: none !important; }
+</style>
+</head>
+<body>
+<header>
+  <h1 id="title">加载中…</h1>
+  <div class="stats" id="stats"></div>
+  <div class="spacer"></div>
+  <span class="dirty" id="dirty" hidden>未保存</span>
+  <button class="btn" id="undo" title="撤销 Ctrl+Z" disabled>撤销</button>
+  <button class="btn" id="redo" title="重做 Ctrl+Y" disabled>重做</button>
+  <button class="btn" id="theme" title="切换深浅色">◐</button>
+  <button class="btn" id="reorder" hidden title="FocuSee 不支持调换顺序：把素材按新顺序重新拼一份，另存成新工程（原工程不动）">生成调序工程</button>
+  <button class="btn primary" id="save" title="写回 FocuSee 工程 Ctrl+S">保存到工程</button>
+</header>
+<main>
+  <section class="left">
+    <div class="card player">
+      <div id="vbox"><div class="placeholder">预览视频生成中，完成后会自动出现…</div></div>
+      <div class="ctrl">
+        <button class="btn" id="play">播放</button>
+        <div class="seg" id="mode">
+          <button data-m="edited" class="on">剪后预览</button>
+          <button data-m="source">原片</button>
+        </div>
+        <span class="time" id="clock">00:00.0</span>
+      </div>
+    </div>
+  </section>
+  <section class="card tlcard">
+      <div class="tl-wrap">
+        <div class="tl-head">
+          <div class="legend">
+            <span><i style="background:var(--keep)"></i>保留</span>
+            <span><i class="pause"></i>气口</span>
+            <span><i class="filler"></i>语气词</span>
+            <span><i class="retake"></i>重录</span>
+            <span><i class="manual"></i>手动</span>
+            <span><i style="background:repeating-linear-gradient(45deg,var(--base) 0 2px,transparent 2px 4px)"></i>原工程已剪</span>
+          </div>
+          <div class="spacer"></div>
+          <label>缩放 <input type="range" id="zoom" min="1" max="30" value="1" step="1"></label>
+        </div>
+        <div class="tl-scroll" id="tlscroll"><div class="tl" id="tl"></div></div>
+      </div>
+      <div class="tips">
+        点击色块：还原 / 重新剪掉 · 在时间轴上拖选：新增手动剪辑 · 点空白处：跳转<br>
+        逐字稿：拖选文字按 <kbd>Delete</kbd> 删除、双击一句改字 · 逐句：点字删 / 留这个字，<kbd>Shift</kbd>+点：删 / 留一整段 · 点停顿标记：切换这处气口 · 左侧方块：整句删 / 留<br>
+        <kbd>空格</kbd> 播放暂停 · <kbd>←</kbd><kbd>→</kbd> 前后 2 秒 · <kbd>Ctrl</kbd>+<kbd>Z</kbd> 撤销 · <kbd>Ctrl</kbd>+<kbd>S</kbd> 保存
+      </div>
+    </section>
+  <section class="card right">
+    <div class="filters" id="filters">
+      <div class="seg" id="view" title="逐句：逐个字点删/留；逐字稿：像文档一样选中删除、双击改字">
+        <button data-v="list" class="on">逐句</button><button data-v="doc">逐字稿</button>
+      </div>
+      <button class="chip on" data-f="all">全部</button>
+      <button class="chip" data-f="any">有剪辑的句子</button>
+      <button class="chip" data-f="retake">重录</button>
+      <button class="chip" data-f="filler">语气词</button>
+      <button class="chip" data-f="manual">手动</button>
+      <span class="spacer"></span>
+      <label style="font-size:12px;color:var(--muted)" id="hidecutlbl" hidden><input type="checkbox" id="hidecut"> 隐藏已删除</label>
+      <label style="font-size:12px;color:var(--muted)"><input type="checkbox" id="follow" checked> 跟随播放</label>
+    </div>
+    <div class="list" id="list"></div>
+    <div class="doc-help" id="dochelp" hidden>拖选文字后按 <kbd>Delete</kbd> 删除（选中的全是已删除的就是还原）· 双击一句改字（写 <kbd>/</kbd> 强制换行，清空恢复识别原文）· 单击跳到这里播放 · 拖句首的 <b>⠿</b> 调换顺序</div>
+    <div class="doc" id="doc" hidden></div>
+  </section>
+</main>
+<div class="toast" id="toast"></div>
+<div class="dropmark" id="dropmark" hidden></div>
+<div class="dbar" id="dbar" hidden>
+  <button class="danger" data-act="cut">删除</button><button data-act="restore">还原</button>
+  <button data-act="play">▶ 播放</button><button data-act="edit">改字</button>
+</div>
+
+<script>
+"use strict";
+const $ = (s) => document.querySelector(s);
+const REASON = { pause: "气口", filler: "语气词", retake: "重录", manual: "手动" };
+const LANE = { pause: 0, filler: 1, retake: 2, manual: 2 };
+
+let D = 0, T = null, edit = null, words = [], sentences = [];
+let past = [], future = [], dirty = false, filter = "all", mode = "edited", anchor = null;
+let video = null, derived = null, subs = [], subTimer = null, lastSub = null;
+let view = "list", doc = [], docFlat = [], docSel = null, lastDocTok = -1, docOrder = [], dragSid = null, dropAt = null, curSeg = -1;
+
+// ------------------------------------------------------------ 区间运算（与 fsproj.py 一致）
+function merge(rs) {
+  const s = rs.filter(r => r[1] > r[0]).map(r => [r[0], r[1]]).sort((a, b) => a[0] - b[0] || a[1] - b[1]);
+  const out = [];
+  for (const r of s) { if (out.length && r[0] <= out[out.length - 1][1]) out[out.length - 1][1] = Math.max(out[out.length - 1][1], r[1]); else out.push(r); }
+  return out;
+}
+function complement(cuts, total) {
+  const keeps = []; let t = 0;
+  for (let [a, b] of merge(cuts)) { a = Math.max(0, a); b = Math.min(total, b); if (a > t) keeps.push([t, a]); t = Math.max(t, b); }
+  if (t < total) keeps.push([t, total]);
+  return keeps;
+}
+function intersect(xs, ys) {
+  xs = merge(xs); ys = merge(ys); const out = []; let i = 0, j = 0;
+  while (i < xs.length && j < ys.length) {
+    const a = Math.max(xs[i][0], ys[j][0]), b = Math.min(xs[i][1], ys[j][1]);
+    if (b > a) out.push([a, b]);
+    if (xs[i][1] < ys[j][1]) i++; else j++;
+  }
+  return out;
+}
+const len = (rs) => merge(rs).reduce((s, r) => s + r[1] - r[0], 0);
+function orderKeeps(keeps, moves) {
+  let seq = merge(keeps).map(r => [r[0], r[1]]);
+  for (const m of moves || []) {
+    if (m.enabled === false) continue;
+    const s0 = m.start, e0 = m.end, b = m.before;
+    const moved = [], rest = [];
+    for (const [a, z] of seq) {
+      if (z <= s0 || a >= e0) { rest.push([a, z]); continue; }
+      if (a < s0) rest.push([a, s0]);
+      moved.push([Math.max(a, s0), Math.min(z, e0)]);
+      if (z > e0) rest.push([e0, z]);
+    }
+    if (!moved.length) continue;
+    let idx = null;
+    if (b === null || b === undefined || b >= D) idx = rest.length;
+    else {
+      for (let i = 0; i < rest.length; i++) {
+        const [a, z] = rest[i];
+        if (a < b && b < z) { rest.splice(i, 1, [a, b], [b, z]); idx = i + 1; break; }
+        if (Math.abs(a - b) < 1e-9) { idx = i; break; }
+      }
+      if (idx === null) { idx = rest.findIndex(r => r[0] >= b); if (idx < 0) idx = rest.length; }
+    }
+    seq = rest.slice(0, idx).concat(moved, rest.slice(idx));
+  }
+  const out = [];
+  for (const [a, z] of seq) { if (out.length && Math.abs(out[out.length - 1][1] - a) < 1e-6) out[out.length - 1][1] = z; else out.push([a, z]); }
+  return out;
+}
+// 源时间 → 成片时间（考虑调换顺序；落在剪掉的地方时取它前面最近的保留点）
+function makeMapper(seq) {
+  const cum = []; let acc = 0; for (const [a, b] of seq) { cum.push(acc); acc += b - a; }
+  const order = seq.map((_, i) => i).sort((x, y) => seq[x][0] - seq[y][0]);
+  return (t) => {
+    let lo = 0, hi = order.length - 1, j = -1;
+    while (lo <= hi) { const m = (lo + hi) >> 1; if (seq[order[m]][0] <= t) { j = m; lo = m + 1; } else hi = m - 1; }
+    if (j < 0) return 0;
+    const i = order[j]; return cum[i] + Math.min(t, seq[i][1]) - seq[i][0];
+  };
+}
+// 整句挪动带走的范围（与 analyze.sentence_bounds 一致）
+function sentBounds(sid) {
+  const ss = sentences, i = ss.findIndex(x => x.id === sid), s0 = ss[i];
+  const gb = i > 0 ? s0.start - ss[i - 1].end : 0.3, ga = i + 1 < ss.length ? ss[i + 1].start - s0.end : 0.4;
+  return [+(s0.start - Math.max(0, Math.min(0.12, gb / 2))).toFixed(3), +(s0.end + Math.max(0, Math.min(0.2, ga / 2))).toFixed(3)];
+}
+const overlap = (a0, a1, b0, b1) => Math.max(0, Math.min(a1, b1) - Math.max(a0, b0));
+
+function derive() {
+  const on = edit.cuts.filter(c => c.enabled);
+  const base = edit.base_keeps;
+  const minKeep = edit.params.min_keep ?? 0.3;
+  const keeps = intersect(complement(on.map(c => [c.start, c.end]), D), base).filter(k => k[1] - k[0] >= minKeep);
+  const skips = complement(keeps, D);
+  const baseCuts = complement(base, D);
+  const moves = (edit.moves || []).filter(m => m.enabled !== false);
+  const seq = moves.length ? orderKeeps(keeps, moves) : keeps.map(k => [k[0], k[1]]);
+  derived = { on, keeps, skips, baseCuts, moves, seq, ed: makeMapper(seq) };
+}
+
+// 某个时间段被哪些剪辑覆盖（覆盖超过一半才算）
+function coverOf(a, b) {
+  const L = Math.max(1e-6, b - a);
+  if (derived.baseCuts.reduce((s, r) => s + overlap(a, b, r[0], r[1]), 0) / L >= 0.5) return { base: true, cuts: [] };
+  const cs = derived.on.filter(c => overlap(a, b, c.start, c.end) > 0);
+  const tot = len(cs.map(c => [c.start, c.end]).map(r => [Math.max(a, r[0]), Math.min(b, r[1])]));
+  return tot / L >= 0.5 ? { base: false, cuts: cs } : null;
+}
+const topReason = (cs) => (["retake", "manual", "filler", "pause"].find(r => cs.some(c => c.reason === r)) || "manual");
+
+// ------------------------------------------------------------ 格式化
+function fmt(t) { t = Math.max(0, t); const m = Math.floor(t / 60), s = t - m * 60; return String(m).padStart(2, "0") + ":" + s.toFixed(1).padStart(4, "0"); }
+function fmtLen(t) { const m = Math.floor(t / 60), s = Math.round(t - m * 60); return m ? `${m}分${String(s).padStart(2, "0")}秒` : `${s}秒`; }
+function esc(s) { return String(s).replace(/[&<>"']/g, c => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c])); }
+function toast(msg, ms = 2600) { const el = $("#toast"); el.textContent = msg; el.classList.add("show"); clearTimeout(toast._t); toast._t = setTimeout(() => el.classList.remove("show"), ms); }
+
+// ------------------------------------------------------------ 编辑操作（都经过 commit，支持撤销）
+function snapshot() { return JSON.stringify({ c: edit.cuts, t: edit.sentence_text || {}, m: edit.moves || [] }); }
+function restoreSnap(snap) {
+  const o = JSON.parse(snap);
+  const textChanged = JSON.stringify(edit.sentence_text || {}) !== JSON.stringify(o.t);
+  edit.cuts = o.c; edit.sentence_text = o.t; edit.moves = o.m || [];
+  if (textChanged) loadDoc();
+}
+function commit(fn, msg) {
+  const before = snapshot();
+  fn();
+  if (snapshot() === before) return;
+  past.push(before); if (past.length > 300) past.shift();
+  future = []; setDirty(true); renderAll();
+  if (msg) toast(msg, 1600);
+}
+function undo() { if (!past.length) return; future.push(snapshot()); restoreSnap(past.pop()); setDirty(true); renderAll(); }
+function redo() { if (!future.length) return; past.push(snapshot()); restoreSnap(future.pop()); setDirty(true); renderAll(); }
+function setDirty(v) { dirty = v; $("#dirty").hidden = !v; }
+function nextId() { let n = 0; for (const c of edit.cuts) { const m = /^c(\d+)$/.exec(c.id); if (m) n = Math.max(n, +m[1]); } return "c" + (n + 1); }
+function addCut(a, b, reason = "manual", note = "") {
+  edit.cuts.push({ id: nextId(), start: +a.toFixed(3), end: +b.toFixed(3), reason, origin: "user", enabled: true, note });
+}
+// 还原：用户自己加的直接删掉，自动/agent 的标记为停用（保留记录，方便再剪回去）
+function releaseCuts(cs) {
+  const ids = new Set(cs.map(c => c.id));
+  edit.cuts = edit.cuts.filter(c => !(ids.has(c.id) && c.origin === "user"));
+  for (const c of edit.cuts) if (ids.has(c.id)) c.enabled = false;
+}
+function toggleCut(c) {
+  commit(() => {
+    if (c.enabled) releaseCuts([c]); else c.enabled = true;
+  }, c.enabled ? `已还原${REASON[c.reason] || ""} ${fmt(c.start)}` : `已剪掉 ${fmt(c.start)}`);
+}
+function toggleRange(a, b) {
+  const cov = coverOf(a, b);
+  if (cov && cov.base) return toast("这部分是你在 FocuSee 里原本就剪掉的，请回 FocuSee 里恢复");
+  commit(() => {
+    if (cov) releaseCuts(cov.cuts.filter(c => c.reason !== "pause" || (c.start >= a - 0.5 && c.end <= b + 0.5)));
+    else addCut(a, b);
+  });
+}
+function toggleWord(i, shift) {
+  if (shift && anchor !== null && anchor !== i) {
+    const [x, y] = [Math.min(anchor, i), Math.max(anchor, i)];
+    const cov = coverOf(words[i].start, words[i].end);
+    commit(() => {
+      if (cov && !cov.base) {
+        const cs = derived.on.filter(c => c.start < words[y].end && c.end > words[x].start && c.reason !== "pause");
+        releaseCuts(cs);
+      } else addCut(words[x].start, words[y].end, "manual", "手动删除一段");
+    });
+    anchor = null; return;
+  }
+  anchor = i;
+  toggleRange(words[i].start, words[i].end);
+}
+function toggleSentence(s) {
+  const ws = s.words;
+  const anyKept = ws.some(w => !coverOf(w.start, w.end));
+  commit(() => {
+    if (anyKept) addCut(s.start, s.end, "manual", "整句删除");
+    else releaseCuts(derived.on.filter(c => c.reason !== "pause" && overlap(c.start, c.end, s.start, s.end) > 0));
+  }, anyKept ? `已删除第 ${s.id} 句` : `已还原第 ${s.id} 句`);
+}
+function toggleGap(a, b) {
+  const cs = derived.on.filter(c => overlap(c.start, c.end, a, b) > 0.02);
+  commit(() => {
+    if (cs.length) releaseCuts(cs);
+    else {
+      const pad = edit.params.pad ?? 0.12;
+      if (b - a > pad * 2 + 0.05) edit.cuts.push({ id: nextId(), start: +(a + pad).toFixed(3), end: +(b - pad).toFixed(3), reason: "pause", origin: "user", enabled: true, note: "手动剪气口" });
+    }
+  });
+}
+
+// 逐字稿：删除 / 精确还原一段（超出选区的那部分剪辑会保留）
+function cutSpan(a, b) {
+  if (b - a < 0.02) return;
+  commit(() => addCut(a, b, "manual", "逐字稿删除"), `已删除 ${fmt(a)}–${fmt(b)}`);
+}
+function restoreSpan(a, b) {
+  if (derived.baseCuts.some(r => overlap(a, b, r[0], r[1]) > 0.05)) return toast("选中的部分有你在 FocuSee 里原本就剪掉的内容，请回 FocuSee 里恢复");
+  const cs = derived.on.filter(c => overlap(c.start, c.end, a, b) > 0.01 && (c.reason !== "pause" || (c.start >= a - 0.08 && c.end <= b + 0.08)));
+  if (!cs.length) return toast("选中的文字本来就保留着");
+  commit(() => {
+    const pieces = [];
+    for (const c of cs) {
+      if (c.start < a - 0.01) pieces.push([c.start, a, c.reason]);
+      if (c.end > b + 0.01) pieces.push([b, c.end, c.reason]);
+    }
+    releaseCuts(cs);
+    for (const [x, y, r] of pieces) addCut(x, y, r, "部分还原后剩下的剪辑");
+  }, `已还原 ${fmt(a)}–${fmt(b)}`);
+}
+function moveSentence(sid, beforeSid) {
+  const [a, b] = sentBounds(sid);
+  const before = beforeSid === null ? null : sentBounds(beforeSid)[0];
+  if (before !== null && before >= a - 0.01 && before <= b + 0.01) return;
+  commit(() => {
+    edit.moves = (edit.moves || []).filter(m => !(Math.abs(m.start - a) < 1e-3 && Math.abs(m.end - b) < 1e-3));
+    let n = 0; for (const m of edit.moves) { const k = /^m(\d+)$/.exec(m.id || ""); if (k) n = Math.max(n, +k[1]); }
+    edit.moves.push({ id: "m" + (n + 1), start: a, end: b, before, sentences: [sid], before_sentence: beforeSid, origin: "user", enabled: true, note: "" });
+  }, beforeSid === null ? `第 ${sid} 句挪到了最后` : `第 ${sid} 句挪到了第 ${beforeSid} 句前面`);
+}
+function cancelMove(id) {
+  commit(() => { edit.moves = (edit.moves || []).filter(m => m.id !== id); }, "已取消调换顺序");
+}
+const moveOf = (sid) => (edit.moves || []).find(m => m.enabled !== false && (m.sentences || []).includes(sid));
+function setSentenceText(sid, text) {
+  const cur = doc.find(d => d.id === sid);
+  text = text.trim();
+  if (cur && text === cur.text) return renderDoc();
+  commit(() => {
+    edit.sentence_text = { ...(edit.sentence_text || {}) };
+    if (text) edit.sentence_text[String(sid)] = text; else delete edit.sentence_text[String(sid)];
+  }, text ? `第 ${sid} 句字幕已修改` : `第 ${sid} 句恢复识别原文`);
+  loadDoc();
+}
+
+// ------------------------------------------------------------ 渲染
+function renderStats() {
+  const before = len(edit.base_keeps), after = len(derived.keeps);
+  const by = {}; for (const r in REASON) by[r] = derived.on.filter(c => c.reason === r).length;
+  $("#stats").innerHTML =
+    `<span>原片 <b>${fmtLen(before)}</b></span><span>剪后 <b>${fmtLen(after)}</b>（−${fmtLen(before - after)}）</span>` +
+    `<span>${derived.keeps.length} 段</span>` + (derived.moves.length ? `<span>调换顺序 <b>${derived.moves.length}</b></span>` : "") +
+    Object.keys(REASON).map(r => `<span>${REASON[r]} <b>${by[r]}</b></span>`).join("");
+  $("#undo").disabled = !past.length; $("#redo").disabled = !future.length;
+  $("#reorder").hidden = !derived.moves.length && !reorderBusy;
+}
+function renderTimeline() {
+  const tl = $("#tl");
+  const pct = (t) => (t / D * 100) + "%";
+  const mv = derived.moves.map(m => [m.start, m.end]);
+  let h = `<div class="row r-keep">` + derived.keeps.map(k => {
+    const moved = mv.some(r => overlap(k[0], k[1], r[0], r[1]) > 0.05);
+    return `<div class="keep${moved ? " moved" : ""}" style="left:${pct(k[0])};width:${pct(k[1] - k[0])}"${moved ? ' title="调换过顺序"' : ""}></div>`;
+  }).join("") + `</div>`;
+  const lanes = [[], [], []];
+  for (const c of edit.cuts) lanes[LANE[c.reason] ?? 2].push(c);
+  lanes.forEach((cs, i) => {
+    h += `<div class="row r${i}">` + derived.baseCuts.map(r => `<div class="basecut" style="left:${pct(r[0])};width:${pct(r[1] - r[0])}"></div>`).join("") +
+      cs.map(c => `<div class="blk ${c.reason}${c.enabled ? "" : " off"}" data-id="${c.id}" style="left:${pct(c.start)};width:${pct(c.end - c.start)}" title="${esc(`${REASON[c.reason] || c.reason}${c.enabled ? "" : "（已还原）"} ${fmt(c.start)}–${fmt(c.end)} ${(c.end - c.start).toFixed(2)}s${c.note ? "\n" + c.note : ""}\n点击${c.enabled ? "还原" : "重新剪掉"}`)}"></div>`).join("") + `</div>`;
+  });
+  h += `<div class="ph" id="ph"></div><div class="sel" id="sel" hidden></div>`;
+  tl.innerHTML = h;
+  updatePlayhead();
+}
+function renderList() {
+  const list = $("#list");
+  let h = "", prevEnd = null, shown = 0;
+  for (const s of sentences) {
+    let sentHasCut = false, reasons = new Set(), notes = new Map(), keptCount = 0;
+    let inner = "";
+    // 句首前的停顿
+    const pre = prevEnd !== null ? [prevEnd, s.start] : null;
+    if (pre && pre[1] - pre[0] >= 0.3) {
+      const cov = coverOf(pre[0], pre[1]);
+      inner += gapChip(pre[0], pre[1], cov);
+    }
+    s.words.forEach((w, k) => {
+      if (k > 0) {
+        const a = s.words[k - 1].end, b = w.start;
+        if (b - a >= 0.3) inner += gapChip(a, b, coverOf(a, b));
+      }
+      const cov = coverOf(w.start, w.end);
+      let cls = "w";
+      if (cov) {
+        sentHasCut = true;
+        const r = cov.base ? "base" : topReason(cov.cuts);
+        cls += " cut r-" + r; reasons.add(r);
+        // 理由只显示在这段剪辑开始的那一句下面，避免每句重复
+        if (!cov.base) for (const c of cov.cuts) {
+          if (!c.note || !(c.reason === "retake" || c.reason === "manual")) continue;
+          const home = c.sentences ? c.sentences[0] === s.id : (c.start >= s.start - 0.05 && c.start < s.end);
+          if (home) notes.set(c.id, c);
+        }
+      } else keptCount++;
+      if (anchor === w.gi) cls += " anchor";
+      inner += `<span class="${cls}" data-i="${w.gi}">${esc(w.w)}${esc(w.p || "")}</span>`;
+    });
+    prevEnd = s.end;
+    let extra = "";
+    for (const c of edit.cuts) {
+      if (c.enabled || !c.note || !(c.origin === "agent" || c.note.startsWith("建议"))) continue;
+      const home = c.sentences ? c.sentences[0] === s.id : (c.start >= s.start - 0.05 && c.start < s.end);
+      if (home) extra += `<div class="note off" data-cid="${c.id}" title="点击启用这处剪辑">未启用的建议：${esc(c.removed_text ? "「" + c.removed_text + "」" : "")}${esc(c.note)}</div>`;
+    }
+    const mvx = moveOf(s.id);
+    if (mvx) extra += `<div class="note n-move" data-unmove="${mvx.id}" title="点击取消调换顺序">↕ 已挪到${mvx.before_sentence === null || mvx.before_sentence === undefined ? "最后" : `第 ${mvx.before_sentence} 句前面`}（点击取消）</div>`;
+    const fix = (edit.sentence_text || {})[String(s.id)];
+    if (fix) extra += `<div class="note fix">✎ 字幕已校对：${esc(fix.replace(/\//g, " / "))}</div>`;
+    const visible = filter === "all" || (filter === "any" ? sentHasCut : reasons.has(filter));
+    if (!visible) continue;
+    shown++;
+    const tog = keptCount === 0 ? "cut" : (sentHasCut ? "part" : "");
+    h += `<div class="sent" data-s="${s.id}"><span class="t" data-seek="${s.start}">${fmt(s.start)}</span>` +
+      `<button class="tog ${tog}" data-tog="${s.id}" title="${keptCount === 0 ? "还原整句" : "删除整句"}">${keptCount === 0 ? "✕" : ""}</button>` +
+      `<div class="words">${inner}</div>` +
+      [...notes.values()].map(c => `<div class="note n-${c.reason}">${c.reason === "retake" ? "重录" : "手动"}：${esc(c.note)}${c.kept_text ? esc("（保留：" + c.kept_text + "）") : ""}</div>`).join("") + extra + `</div>`;
+  }
+  list.innerHTML = h || `<div class="empty">没有符合筛选条件的句子</div>`;
+}
+function gapChip(a, b, cov) {
+  const r = cov && !cov.base ? topReason(cov.cuts) : "";
+  return `<span class="gap${cov ? " cut" : ""}${r === "filler" ? " r-filler" : ""}" data-ga="${a}" data-gb="${b}" title="停顿 ${(b - a).toFixed(2)}s，点击${cov ? "还原" : "剪掉"}">⏸${(b - a).toFixed(1)}s</span>`;
+}
+async function loadDoc() {
+  try {
+    const r = await fetch("/api/doc", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(edit) });
+    const j = await r.json(); if (!r.ok) throw new Error(j.error);
+    doc = j.sentences; if (view === "doc") renderDoc();
+  } catch (e) { toast("逐字稿加载失败：" + e.message, 5000); }
+}
+function renderDoc() {
+  const el = $("#doc"); if (!el) return;
+  const keepScroll = el.scrollTop;
+  let h = "<p>", prev = null; docFlat = [];
+  const ed = derived.ed;
+  const ordered = doc.map((s, i) => ({ s, i, k: ed((s.start + s.end) / 2) })).sort((x, y) => x.k - y.k || x.i - y.i).map(x => x.s);
+  docOrder = ordered.map(s => s.id);
+  for (const s of ordered) {
+    const mvx = moveOf(s.id), pmv = prev ? moveOf(prev.id) : null;
+    if (prev !== null && (s.start - prev.end > 2.5 || s.start < prev.start || (mvx || null) !== (pmv || null))) h += "</p><p>";
+    prev = s;
+    const sc = coverOf(s.start, s.end);
+    let inner = "";
+    for (const t of s.tokens) {
+      const cov = coverOf(t.start, t.end);
+      const cls = "dt" + (cov ? " cut r-" + (cov.base ? "base" : topReason(cov.cuts)) : "");
+      inner += `<span class="${cls}" data-k="${docFlat.length}">${esc(t.t)}${esc(t.p || "")}</span>`;
+      docFlat.push(t);
+    }
+    const anyKept = s.tokens.some(t => !coverOf(t.start, t.end));
+    const grip = anyKept ? `<span class="grip" draggable="true" data-g="${s.id}" title="拖动调换这句的顺序">⠿</span>` : "";
+    const badge = mvx ? `<span class="mvx" data-unmove="${mvx.id}" title="这句调换过顺序，点击取消">↕ 取消</span>` : "";
+    h += `<span class="ds${s.fixed ? " fixed" : ""}${sc && sc.base ? " base" : ""}${mvx ? " moved" : ""}" data-s="${s.id}" title="${s.fixed ? "字幕已校对 · " : ""}双击改字">${grip}${inner}${badge}</span>`;
+  }
+  el.innerHTML = h + "</p>";
+  el.scrollTop = keepScroll;
+  lastDocTok = -1; hideBar();
+}
+function renderAll() { derive(); renderStats(); renderTimeline(); if (view === "doc") renderDoc(); else renderList(); highlightNow(true); schedulePreview(); }
+// 字幕预览：用和写入工程完全相同的算法在服务端生成
+function schedulePreview() {
+  clearTimeout(subTimer);
+  subTimer = setTimeout(async () => {
+    try {
+      const r = await fetch("/api/preview", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(edit) });
+      if (r.ok) { subs = (await r.json()).items || []; lastSub = null; }
+    } catch (e) {}
+  }, 350);
+}
+function updateSubtitle() {
+  const el = $("#subov"); if (!el || !video) return;
+  const t = video.currentTime;
+  let lo = 0, hi = subs.length - 1, k = -1;
+  while (lo <= hi) { const m = (lo + hi) >> 1; if (subs[m].start <= t) { k = m; lo = m + 1; } else hi = m - 1; }
+  const it = k >= 0 && t < subs[k].end ? subs[k] : null;
+  if (it !== lastSub) { el.textContent = it ? it.text : ""; lastSub = it; }
+}
+
+// ------------------------------------------------------------ 播放
+function setupVideo() {
+  if (video) return;
+  $("#vbox").innerHTML = `<video id="video" preload="auto" src="/proxy.mp4" playsinline></video><div class="subov" id="subov" title="字幕预览"></div>`;
+  video = $("#video");
+  video.addEventListener("play", () => $("#play").textContent = "暂停");
+  video.addEventListener("pause", () => $("#play").textContent = "播放");
+  video.addEventListener("click", togglePlay);
+  // 跳过逻辑不能只靠 requestAnimationFrame：页面在后台/被遮挡时它会暂停
+  video.addEventListener("timeupdate", maybeSkip);
+  video.addEventListener("seeked", maybeSkip);
+  video.addEventListener("playing", maybeSkip);
+  setInterval(() => { if (video && !video.paused) maybeSkip(); }, 40);
+  requestAnimationFrame(tick);
+}
+function togglePlay() { if (!video) return; if (video.paused) { maybeSkip(); video.play(); } else video.pause(); }
+function seek(t) { if (!video) return; curSeg = -1; video.currentTime = Math.max(0, Math.min(D, t)); if (mode === "edited") maybeSkip(); }
+// 剪后预览：按播放顺序（含调换顺序）一段一段放
+function maybeSkip() {
+  if (mode !== "edited" || !video) return;
+  const seq = derived.seq; if (!seq.length) return;
+  const t = video.currentTime;
+  if (curSeg >= 0 && curSeg < seq.length) {
+    const [a, b] = seq[curSeg];
+    if (t >= a - 0.08 && t < b - 0.01) return;
+    if (t >= b - 0.01 && t < b + 0.6) { // 正常播到这段结尾：接下一段
+      if (curSeg + 1 >= seq.length) { video.pause(); video.currentTime = Math.max(a, b - 0.05); return; }
+      curSeg++; video.currentTime = seq[curSeg][0] + 0.001; return;
+    }
+  }
+  // 拖动/跳转后：找 t 所在的段，落在剪掉的地方就去后面最近的一段
+  let i = seq.findIndex(([a, b]) => t >= a - 0.005 && t < b - 0.01);
+  if (i < 0) {
+    let best = -1;
+    seq.forEach(([a], k) => { if (a >= t && (best < 0 || a < seq[best][0])) best = k; });
+    if (best < 0) { video.pause(); return; }
+    i = best; video.currentTime = seq[i][0] + 0.001;
+  }
+  curSeg = i;
+}
+function editedTime(t) {
+  const seq = derived.seq; let acc = 0;
+  for (let i = 0; i < seq.length; i++) { const [a, b] = seq[i]; if (t >= a && t < b) return acc + t - a; acc += b - a; }
+  return derived.ed(t);
+}
+let lastNow = -1, lastWord = -1;
+function tick() {
+  if (video && !video.paused) maybeSkip();
+  updatePlayhead();
+  highlightNow(false);
+  updateSubtitle();
+  requestAnimationFrame(tick);
+}
+function updatePlayhead() {
+  const ph = $("#ph"); if (!ph) return;
+  const t = video ? video.currentTime : 0;
+  ph.style.left = (t / D * 100) + "%";
+  $("#clock").textContent = mode === "edited" ? `${fmt(editedTime(t))} / ${fmt(len(derived.keeps))}（源 ${fmt(t)}）` : `${fmt(t)} / ${fmt(D)}`;
+}
+function highlightNow(force) {
+  if (!video) return;
+  const t = video.currentTime;
+  // 当前字
+  let lo = 0, hi = words.length - 1, wi = -1;
+  while (lo <= hi) { const m = (lo + hi) >> 1; if (words[m].start <= t) { wi = m; lo = m + 1; } else hi = m - 1; }
+  if (wi >= 0 && t > words[wi].end + 0.3) wi = -1;
+  if (wi !== lastWord || force) {
+    document.querySelectorAll(".w.cur").forEach(e => e.classList.remove("cur"));
+    if (wi >= 0) { const el = document.querySelector(`.w[data-i="${wi}"]`); if (el) el.classList.add("cur"); }
+    lastWord = wi;
+  }
+  if (view === "doc") {
+    let lo2 = 0, hi2 = docFlat.length - 1, k = -1;
+    while (lo2 <= hi2) { const m = (lo2 + hi2) >> 1; if (docFlat[m].start <= t) { k = m; lo2 = m + 1; } else hi2 = m - 1; }
+    if (k >= 0 && t > docFlat[k].end + 0.3) k = -1;
+    if (k !== lastDocTok || force) {
+      document.querySelectorAll(".dt.cur").forEach(e => e.classList.remove("cur"));
+      const el = k >= 0 ? document.querySelector(`.dt[data-k="${k}"]`) : null;
+      if (el) { el.classList.add("cur"); if ($("#follow").checked && !video.paused) el.scrollIntoView({ block: "center", behavior: "smooth" }); }
+      lastDocTok = k;
+    }
+    return;
+  }
+  const sid = wi >= 0 ? words[wi].sid : -1;
+  if (sid !== lastNow || force) {
+    document.querySelectorAll(".sent.now").forEach(e => e.classList.remove("now"));
+    const el = sid >= 0 ? document.querySelector(`.sent[data-s="${sid}"]`) : null;
+    if (el) { el.classList.add("now"); if ($("#follow").checked && !video.paused) el.scrollIntoView({ block: "center", behavior: "smooth" }); }
+    lastNow = sid;
+  }
+}
+
+// ------------------------------------------------------------ 事件
+function bind() {
+  $("#play").onclick = togglePlay;
+  $("#undo").onclick = undo; $("#redo").onclick = redo; $("#save").onclick = () => save(false);
+  $("#reorder").onclick = reorderProject;
+  $("#theme").onclick = () => {
+    const cur = document.documentElement.dataset.theme || (matchMedia("(prefers-color-scheme: dark)").matches ? "dark" : "light");
+    const nx = cur === "dark" ? "light" : "dark"; document.documentElement.dataset.theme = nx;
+    try { localStorage.setItem("fc-theme", nx); } catch (e) {}
+  };
+  $("#mode").onclick = (e) => {
+    const b = e.target.closest("button"); if (!b) return;
+    mode = b.dataset.m; document.querySelectorAll("#mode button").forEach(x => x.classList.toggle("on", x === b));
+    updatePlayhead();
+  };
+  $("#filters").onclick = (e) => {
+    const b = e.target.closest(".chip"); if (!b) return;
+    filter = b.dataset.f; document.querySelectorAll("#filters .chip").forEach(x => x.classList.toggle("on", x === b));
+    renderList(); highlightNow(true);
+  };
+  $("#zoom").oninput = (e) => { $("#tl").style.width = (e.target.value * 100) + "%"; };
+  $("#view").onclick = (e) => {
+    const b = e.target.closest("button"); if (!b || b.dataset.v === view) return;
+    view = b.dataset.v; document.querySelectorAll("#view button").forEach(x => x.classList.toggle("on", x === b));
+    const isDoc = view === "doc";
+    $("#list").hidden = isDoc; $("#doc").hidden = !isDoc; $("#dochelp").hidden = !isDoc; $("#hidecutlbl").hidden = !isDoc;
+    document.querySelectorAll("#filters .chip").forEach(x => x.hidden = isDoc);
+    try { localStorage.setItem("fc-view", view); } catch (er) {}
+    hideBar();
+    if (isDoc) { if (!doc.length) loadDoc(); else renderDoc(); } else renderList();
+    highlightNow(true);
+  };
+  $("#hidecut").onchange = (e) => {
+    $("#doc").classList.toggle("hidecut", e.target.checked);
+    try { localStorage.setItem("fc-hidecut", e.target.checked ? "1" : ""); } catch (er) {}
+  };
+  const docEl = $("#doc");
+  docEl.addEventListener("mouseup", (e) => setTimeout(() => onDocSelect(e), 0));
+  docEl.addEventListener("dblclick", (e) => { const s = e.target.closest(".ds"); if (s) startEdit(+s.dataset.s); });
+  docEl.addEventListener("scroll", () => { hideBar(); $("#dropmark").hidden = true; });
+  docEl.addEventListener("click", (e) => { const u = e.target.closest(".mvx"); if (u) { e.stopPropagation(); cancelMove(u.dataset.unmove); } });
+  docEl.addEventListener("dragstart", (e) => {
+    const g = e.target.closest && e.target.closest(".grip"); if (!g) { e.preventDefault(); return; }
+    dragSid = +g.dataset.g; hideBar(); window.getSelection()?.removeAllRanges();
+    e.dataTransfer.effectAllowed = "move"; e.dataTransfer.setData("text/plain", String(dragSid));
+    const ds = g.closest(".ds"); e.dataTransfer.setDragImage(ds, 10, 10); setTimeout(() => ds.classList.add("dragging"), 0);
+  });
+  docEl.addEventListener("dragover", (e) => {
+    if (dragSid === null) return;
+    const ds = e.target.closest && e.target.closest(".ds"); const mark = $("#dropmark");
+    if (!ds) return;
+    e.preventDefault();
+    const sid = +ds.dataset.s, toks = [...ds.querySelectorAll(".dt")].filter(x => x.offsetParent !== null);
+    if (!toks.length) return;
+    const first = toks[0].getBoundingClientRect(), last = toks[toks.length - 1].getBoundingClientRect();
+    // 鼠标在这句前半段 → 放到这句前面；后半段 → 放到这句后面（也就是下一句前面）
+    const tok = e.target.closest(".dt"); const ti = tok ? toks.indexOf(tok) : (e.clientY < (first.top + last.bottom) / 2 ? 0 : toks.length - 1);
+    const before = ti < toks.length / 2;
+    const r = before ? first : last;
+    mark.hidden = false; mark.style.top = r.top + "px"; mark.style.height = r.height + "px";
+    mark.style.left = (before ? r.left - 3 : r.right + 1) + "px";
+    let target;
+    if (before) target = sid;
+    else { const i = docOrder.indexOf(sid); target = i + 1 < docOrder.length ? docOrder[i + 1] : null; }
+    dropAt = target;
+  });
+  docEl.addEventListener("drop", (e) => {
+    if (dragSid === null) return;
+    e.preventDefault();
+    const sid = dragSid, target = dropAt;
+    endDrag();
+    if (target === sid) return;
+    if (target !== null && docOrder.indexOf(target) === docOrder.indexOf(sid) + 1) return; // 放回原位
+    moveSentence(sid, target);
+  });
+  docEl.addEventListener("dragend", endDrag);
+  $("#dbar").addEventListener("mousedown", (e) => e.preventDefault()); // 点按钮时不丢失选区
+  $("#dbar").onclick = (e) => {
+    const btn = e.target.closest("button"); if (!btn || !docSel) return;
+    const { a, b, sids } = docSel;
+    const act = btn.dataset.act;
+    window.getSelection()?.removeAllRanges(); hideBar();
+    if (act === "cut") cutSpan(a, b);
+    else if (act === "restore") restoreSpan(a, b);
+    else if (act === "play") { seek(a); if (video && video.paused) togglePlay(); }
+    else if (act === "edit") startEdit(sids[0]);
+  };
+  $("#list").onclick = (e) => {
+    const t = e.target;
+    if (t.dataset.seek !== undefined) { seek(+t.dataset.seek); if (video && video.paused) togglePlay(); return; }
+    if (t.dataset.tog !== undefined) { toggleSentence(sentences[+t.dataset.tog]); return; }
+    if (t.dataset.cid !== undefined) { const c = edit.cuts.find(x => x.id === t.dataset.cid); if (c) toggleCut(c); return; }
+    if (t.dataset.unmove !== undefined) { cancelMove(t.dataset.unmove); return; }
+    if (t.dataset.ga !== undefined) { toggleGap(+t.dataset.ga, +t.dataset.gb); return; }
+    if (t.dataset.i !== undefined) { toggleWord(+t.dataset.i, e.shiftKey); if (e.shiftKey) window.getSelection()?.removeAllRanges(); }
+  };
+  $("#list").ondblclick = (e) => { const t = e.target; if (t.dataset.i !== undefined) { seek(words[+t.dataset.i].start); } };
+  // 时间轴：点击色块切换、拖选新增、点空白跳转
+  const tl = $("#tl"); let drag = null;
+  const tAt = (e) => { const r = tl.getBoundingClientRect(); return Math.max(0, Math.min(D, (e.clientX - r.left) / r.width * D)); };
+  tl.addEventListener("mousedown", (e) => {
+    if (e.button !== 0) return;
+    drag = { x: e.clientX, t0: tAt(e), blk: e.target.closest(".blk"), moved: false };
+  });
+  window.addEventListener("mousemove", (e) => {
+    if (!drag) return;
+    if (Math.abs(e.clientX - drag.x) > 4) drag.moved = true;
+    if (drag.moved) {
+      const a = Math.min(drag.t0, tAt(e)), b = Math.max(drag.t0, tAt(e)), sel = $("#sel");
+      sel.hidden = false; sel.style.left = (a / D * 100) + "%"; sel.style.width = ((b - a) / D * 100) + "%";
+    }
+  });
+  window.addEventListener("mouseup", (e) => {
+    if (!drag) return;
+    const d = drag; drag = null; const sel = $("#sel"); if (sel) sel.hidden = true;
+    if (d.moved) {
+      const a = Math.min(d.t0, tAt(e)), b = Math.max(d.t0, tAt(e));
+      if (b - a >= 0.1) commit(() => addCut(a, b, "manual", "时间轴手动剪辑"), `已剪掉 ${fmt(a)}–${fmt(b)}`);
+    } else if (d.blk) {
+      const c = edit.cuts.find(x => x.id === d.blk.dataset.id); if (c) toggleCut(c);
+    } else seek(d.t0);
+  });
+  document.addEventListener("keydown", (e) => {
+    if (e.target.matches?.("input, textarea")) return;
+    const mod = e.ctrlKey || e.metaKey;
+    if (view === "doc" && docSel && (e.key === "Delete" || e.key === "Backspace")) {
+      e.preventDefault();
+      const { a, b, allCut } = docSel;
+      window.getSelection()?.removeAllRanges(); hideBar();
+      if (allCut) restoreSpan(a, b); else cutSpan(a, b);
+      return;
+    }
+    if (e.key === "Escape") { hideBar(); return; }
+    if (mod && e.key.toLowerCase() === "s") { e.preventDefault(); save(false); }
+    else if (mod && e.key.toLowerCase() === "z" && !e.shiftKey) { e.preventDefault(); undo(); }
+    else if (mod && (e.key.toLowerCase() === "y" || (e.key.toLowerCase() === "z" && e.shiftKey))) { e.preventDefault(); redo(); }
+    else if (e.code === "Space") { e.preventDefault(); togglePlay(); }
+    else if (e.key === "ArrowLeft" && video) { e.preventDefault(); seek(video.currentTime - 2); }
+    else if (e.key === "ArrowRight" && video) { e.preventDefault(); seek(video.currentTime + 2); }
+  });
+  window.addEventListener("beforeunload", (e) => { if (dirty) { e.preventDefault(); e.returnValue = ""; } });
+}
+
+function endDrag() {
+  dragSid = null; dropAt = null; $("#dropmark").hidden = true;
+  document.querySelectorAll(".ds.dragging").forEach(x => x.classList.remove("dragging"));
+}
+function hideBar() { docSel = null; const b = $("#dbar"); if (b) b.hidden = true; }
+function onDocSelect(e) {
+  const sel = window.getSelection();
+  if (!sel || sel.isCollapsed || !sel.rangeCount) {
+    hideBar();
+    const t = e.target.closest && e.target.closest(".dt");
+    if (t && e.detail === 1) seek(docFlat[+t.dataset.k].start);
+    return;
+  }
+  const range = sel.getRangeAt(0);
+  if (!$("#doc").contains(range.commonAncestorContainer)) return hideBar();
+  const els = [...document.querySelectorAll("#doc .dt")].filter(el => sel.containsNode(el, true) && el.offsetParent !== null);
+  if (!els.length) return hideBar();
+  const toks = els.map(el => docFlat[+el.dataset.k]);
+  const a = Math.min(...toks.map(t => t.start)), b = Math.max(...toks.map(t => t.end));
+  const sids = [...new Set(els.map(el => +el.closest(".ds").dataset.s))];
+  const allCut = els.every(el => el.classList.contains("cut"));
+  docSel = { a, b, sids, allCut };
+  const bar = $("#dbar"), r = range.getBoundingClientRect();
+  bar.querySelector('[data-act="cut"]').disabled = allCut;
+  bar.querySelector('[data-act="restore"]').disabled = !els.some(el => el.classList.contains("cut"));
+  bar.querySelector('[data-act="edit"]').disabled = sids.length !== 1;
+  bar.hidden = false;
+  const bw = bar.offsetWidth, bh = bar.offsetHeight;
+  bar.style.left = Math.max(8, Math.min(innerWidth - bw - 8, r.left + r.width / 2 - bw / 2)) + "px";
+  bar.style.top = (r.top - bh - 8 < 8 ? r.bottom + 8 : r.top - bh - 8) + "px";
+}
+function startEdit(sid) {
+  hideBar(); window.getSelection()?.removeAllRanges();
+  const span = document.querySelector(`.ds[data-s="${sid}"]`), d = doc.find(x => x.id === sid);
+  if (!span || !d) return;
+  const inp = document.createElement("input");
+  inp.className = "dedit"; inp.value = d.text; inp.title = "回车保存，Esc 取消；写 / 强制换行，清空恢复识别原文";
+  span.replaceWith(inp); inp.focus();
+  let done = false;
+  const finish = (ok) => {
+    if (done) return; done = true;
+    if (ok) setSentenceText(sid, inp.value); else renderDoc();
+  };
+  inp.addEventListener("keydown", (e) => {
+    if (e.key === "Enter") { e.preventDefault(); finish(true); }
+    else if (e.key === "Escape") { e.preventDefault(); finish(false); }
+    e.stopPropagation();
+  });
+  inp.addEventListener("blur", () => finish(true));
+}
+
+async function save(force) {
+  const btn = $("#save"); btn.disabled = true; btn.textContent = "保存中…";
+  try {
+    const r = await fetch("/api/save" + (force ? "?force=1" : ""), { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(edit) });
+    const j = await r.json();
+    if (r.status === 409) {
+      if (confirm(j.error + "\n\n确认这个工程现在没有在 FocuSee 里打开，仍然写入吗？")) return save(true);
+      return;
+    }
+    if (!r.ok) throw new Error(j.error || r.statusText);
+    setDirty(false);
+    toast(`已写入工程：剪后 ${fmtLen(j.after)}，${j.segments} 段，字幕 ${j.subtitle_lines} 行\n备份：${j.backup || "无"}` +
+      (derived.moves.length ? "\n调换顺序不会写进原工程（FocuSee 会按时间排回去），要用请点「生成调序工程」" : ""), derived.moves.length ? 8000 : 5000);
+  } catch (e) {
+    toast("保存失败：" + e.message, 6000);
+  } finally { btn.disabled = false; btn.textContent = "保存到工程"; }
+}
+
+// ---------- 调换顺序：后台重拼素材，生成新工程
+let reorderBusy = false;
+async function reorderProject() {
+  const mins = Math.max(3, Math.round(D / 60 * 0.6));
+  if (!confirm(`FocuSee 打开工程时会把片段按时间排回去，所以调换顺序要把素材本身按新顺序重新拼一份：\n\n` +
+    `· 生成一个新工程「${$("#title").textContent} 调序」，原工程不动\n` +
+    `· 录屏、摄像头、声音、鼠标轨迹都按新顺序重拼（重新编码，大约 ${mins} 分钟以上，占用几 GB 空间）\n` +
+    `· 当前页面上的剪辑和字幕修改一起带过去；被剪掉的部分也保留，在 FocuSee 里照样能还原\n\n开始生成吗？`)) return;
+  try {
+    const r = await fetch("/api/reorder", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(edit) });
+    const j = await r.json();
+    if (!r.ok) throw new Error(j.error || r.statusText);
+    pollReorder();
+  } catch (e) { toast("没能开始生成：" + e.message, 6000); }
+}
+async function pollReorder() {
+  let j;
+  try { j = await (await fetch("/api/reorder")).json(); } catch (e) { setTimeout(pollReorder, 3000); return; }
+  const btn = $("#reorder");
+  reorderBusy = j.state === "running";
+  if (reorderBusy) {
+    btn.hidden = false; btn.disabled = true; btn.textContent = "生成中：" + (j.progress || "…").replace(/\(\d+s\)$/, "");
+    setTimeout(pollReorder, 2000); return;
+  }
+  btn.disabled = false; btn.textContent = "生成调序工程"; renderStats();
+  if (j.state === "done" && j.result) {
+    toast(`调序工程已生成：${j.result.project}\n在 FocuSee 里打开它就是新顺序；原工程没动。用时 ${Math.round(j.result.seconds / 60)} 分钟`, 15000);
+  } else if (j.state === "error") {
+    toast("生成失败：" + (j.error || ""), 12000);
+  }
+}
+
+async function pollProxy() {
+  try { const r = await fetch("/api/status"); const j = await r.json(); if (j.proxy) { setupVideo(); return; } } catch (e) {}
+  setTimeout(pollProxy, 4000);
+}
+
+async function init() {
+  try { const th = localStorage.getItem("fc-theme"); if (th) document.documentElement.dataset.theme = th; } catch (e) {}
+  const r = await fetch("/api/data"); const j = await r.json();
+  D = j.duration; T = j.transcript; edit = j.edit;
+  edit.cuts.forEach(c => { if (c.enabled === undefined) c.enabled = true; });
+  sentences = T.sentences;
+  words = [];
+  for (const s of sentences) for (const w of s.words) { w.gi = words.length; w.sid = s.id; words.push(w); }
+  document.title = "粗剪审阅 · " + j.name;
+  $("#title").textContent = j.name; $("#title").title = j.project;
+  bind(); renderAll();
+  fetch("/api/reorder").then(r => r.json()).then(j => { if (j.state === "running") pollReorder(); }).catch(() => {});
+  try {
+    if (localStorage.getItem("fc-hidecut")) { $("#hidecut").checked = true; $("#doc").classList.add("hidecut"); }
+    if (localStorage.getItem("fc-view") === "doc") document.querySelector('#view button[data-v="doc"]').click();
+  } catch (e) {}
+  if (j.proxy) setupVideo(); else pollProxy();
+}
+init().catch(e => { $("#list").innerHTML = `<div class="empty">加载失败：${esc(e.message)}</div>`; });
+</script>
+</body>
+</html>

@@ -1,0 +1,13 @@
+{
+ "name": "默认预设（按剪映单人脸模式的参数）",
+ "smooth": 16,
+ "whiten": 5,
+ "even_skin": 8,
+ "spots": 100,
+ "nasolabial": 9,
+ "dark_circles": 0,
+ "small_face": 23,
+ "thin_face": 0,
+ "narrow_face": 8,
+ "big_eyes": 0
+}

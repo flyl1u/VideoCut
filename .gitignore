@@ -1,0 +1,4 @@
+_testdata/
+__pycache__/
+*.pyc
+assets/readme/build/
