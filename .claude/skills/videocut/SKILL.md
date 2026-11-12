@@ -11,6 +11,7 @@ description: 粗剪 FocuSee 录屏工程（.focusee）：识别语音后按实�
 
 - `.focusee` 是文件夹；编辑信息全在 `configure.focuseeproj`（JSON）。剪辑 = `playTracks`（0–1 的源时间比例，段之间的空隙就是剪掉的部分）。缩放、标注、字幕都用**源时间**，所以只改 `playTracks` 和 `subtitles`，其他轨道不动。
 - 工作文件放在 `%LOCALAPPDATA%\videocut\<工程名>-<hash>\`：`transcript.json`、`edit.json`（剪辑方案）、`sentences.txt`、`subtitles.preview.srt`、`proxy.mp4`、`audio.wav`、`silence.json`、`original.focuseeproj`。
+- **FocuSee 工程存不了章节**：`configure.focuseeproj` 里没有章节/标记字段（对比过 92 个工程，`annotationTracks` 是叠在画面上、会被导出进视频的文字/箭头/马赛克，不能当章节用）。所以章节只存在 `edit.json → chapters`，每次保存都导出成工作目录里的 `chapters.txt`（成片时间戳），由用户贴进视频简介。
 - 用户在 FocuSee 里手动剪掉的部分**永远不会被恢复**；`sentences.txt` 里用 ✗ 标出，不用管这些句子。
 - 每次写入都会在工程旁边生成 `configure.focuseeproj.bak-时间戳`。
 - 术语表 `%LOCALAPPDATA%\videocut\hotwords.txt`（一行一个标准写法）所有工程共用：识别时作为热词提交，`sentences.txt` 开头也会列出来给你校对时参考。
@@ -87,6 +88,21 @@ uv run $S/analyze.py --project "$P" plan --file plan.json
 - 把这期出现的专有名词标准写法放进 `terms`，会追加到全局术语表，下次识别直接用作热词；固定的错写→正写映射放进 `global_replacements`（所有工程生效），只对本工程有效的放 `replacements`。
 - **用户指出改错时**：除了改这一句，还要把正确写法加进术语表、删掉错的那条，并在术语表里给这个词写一句备注（为什么是它、什么语境下），这样下次不会再犯。
 
+### 4b. 划分章节（视频超过 3 分钟时做；用户说不要章节就跳过）
+在第 4 步之后、写入之前，读 `sentences.txt`（以 ✎ 后的校对文字为准）按**内容**分章并起标题，写进 `plan.json` 的 `chapters`（会整体替换已有章节），再跑一次 `plan`：
+```json
+{"chapters": [
+  {"sentence": 0, "title": "开场：这期讲什么"},
+  {"sentence": 31, "title": "四个特性：连续与主动"},
+  {"sentence": 78, "title": "双层架构：Router 与 Worker"}
+]}
+```
+- `sentence` 是这一章从哪一句开始（`[id]`）。章节锚定在句子上，不存时间：剪辑怎么改，成片时间都会自动重算。有调换顺序时按新的播放顺序算，这时 `chapters.txt` 对应的是调序工程导出的视频；`reorder.py` 生成的调序工程会带上章节（起始句跟着换算）。起始句整句被剪掉时自动顺延到后面第一句保留的句子，所以选重录的第一遍也没关系。
+- 粒度：按讲解的大段落分，一章通常 1–3 分钟；3–5 分钟的视频 2–4 章，10–20 分钟 4–8 章。只在话题真正换了的地方分（换了一个问题、一个模块、一个步骤阶段），不要把列表里的每一项都拆成一章；开场白并进第一章，结尾的道别不单独成章（太短，并进最后一章）。
+- 标题给观众看：简短具体（4–14 个字，可以用「主题：要点」），写这一章讲了什么，不写「第一部分」「接下来」；专有名词用校对后的标准写法。
+- 第一章总是从 00:00 开始；每章至少 10 秒、至少 3 章 YouTube 才显示章节进度条（B 站简介里的时间戳没有这个限制）。输出里的 `review` 会提示太短或被忽略的章节。
+- 单独改一章用 `chapter --sentence N --title ...`（新增或改这一句上的章节标题）、`chapter --id ch2 --sentence N`（改分界）、`unchapter --ids ch2`；`chapters` 打印每章的成片时间并重新导出 `chapters.txt`。`sentences.txt` 里 `§ ch2「标题」` 标在每章第一句前面。
+
 ### 5. 检查字幕断句，然后写入
 ```
 uv run $S/apply.py --project "$P" --dry-run    # 生成 subtitles.preview.srt
@@ -109,10 +125,13 @@ uv run $S/review_server.py --project "$P"   # 用 run_in_background，等输出 
 - 视频「剪后预览」自动跳过被剪部分，并叠加显示最终字幕；「原片」显示完整源视频；
 - 时间轴按原因着色，点色块还原/重新剪掉，拖选新增手动剪辑；
 - 字幕列表里点字删/留，Shift+点删/留一段，点 ⏸ 切换气口，左侧方块整句删/留；灰色的「未启用的建议」点一下就启用；
+- 章节：左下「章节」列表显示每章的成片时间和长度，点时间跳转、直接改标题、✕ 删除、「＋ 从这里分章」从当前播放的句子分章、「复制时间戳」；逐字稿/逐句里每章第一句前有 `§ 标题`，拖到别的句子上改分界；时间轴上的青色竖线也可以左右拖（吸附到句首）；
 - 「逐字稿」视图：全片连成文档读，拖选文字按 Delete 删除（选中的全是已删的就是还原，只还原选中部分），双击一句直接改字幕文字（写 / 强制换行，清空恢复识别原文），单击跳转播放；拖句首的 ⠿ 调换顺序（剪后预览立即按新顺序播放），之后点页头「生成调序工程」；
 - Ctrl+Z 撤销，Ctrl+S 或「保存到工程」写回（同样先备份、检查 FocuSee 进程）。
 
 把汇总告诉用户：原时长 → 剪后时长，各类剪了几处，每条重录判断和理由，校对了多少句字幕（专有名词按语境直接改好，不用逐条列），美颜是否已完成（后台还在跑就说一声），备份文件位置，审阅页地址。
+
+有章节时，把 `chapters.txt` 的内容（`00:00 开场` 这样一行一章，成片时间）原样贴在回复里，告诉用户可以直接粘进 B 站/YouTube 简介，文件在工作目录里；并说明 FocuSee 工程本身存不了章节。用户在审阅页改过章节并保存后，`chapters.txt` 会自动更新，交付前用 `analyze.py chapters` 再取一次最新的。
 
 ### 7. 交还给用户
 - 用户也可以口头让你改（"第 30 句别剪""把 2:10 到 2:15 剪掉""这句字幕改成…"），用 `restore` / `cut` / `fix` 改 `edit.json` 后重新 `apply.py`；审阅页刷新即可看到。
@@ -138,7 +157,11 @@ uv run $S/review_server.py --project "$P"   # 用 run_in_background，等输出 
 | `replace --from A --to B [--global]` | 字幕替换（`--global` 写进所有工程共用的词表） |
 | `move --sentences 12-14 --before 3` / `--to-end` | 记录调换顺序（之后用 `reorder.py` 生成调序工程） |
 | `unmove [--ids m1]` | 取消调换顺序 |
+| `chapter --sentence N --title "..."` | 新增章节（这一句已是章节起点就改它的标题） |
+| `chapter --id ch2 [--sentence N] [--title "..."]` | 修改章节的起始句 / 标题 |
+| `unchapter [--ids ch2,ch3]` | 删除章节（不给 `--ids` 删除全部） |
+| `chapters` | 打印每章的成片时间并导出 `chapters.txt` |
 
-`plan.json` 里的 `terms` 会追加进全局术语表（下次识别当热词）。
+`plan.json` 里的 `terms` 会追加进全局术语表（下次识别当热词）；`chapters` 会整体替换已有章节。
 
 `retake`/`cut` 也接受 `--confidence high|medium|low` 和 `--screen redundant`。每个子命令都会打印最新汇总和需要复核的项。

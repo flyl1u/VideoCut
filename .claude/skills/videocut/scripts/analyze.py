@@ -19,6 +19,10 @@
   restore  还原（停用）剪辑：--ids c3,c7 或 --sentences 5
   fix      校对某句字幕文字：--sentence 12 --text "正确的文字"（可用 / 指定换行）；--clear 取消
   replace  字幕替换：--from 错字 --to 正字 [--global 记进全局词表，以后所有工程都生效]
+  move     调换顺序：--sentences 12-14 --before 3 | --to-end；unmove 取消
+  chapter  章节：--sentence N --title 标题（新增，或改这一句上已有章节的标题）；--id ch2 改标题/起始句
+  unchapter 删除章节：--ids ch2,ch3；不给 --ids 删除全部
+  chapters 打印章节在成片里的时间，并导出 chapters.txt（视频简介用的时间戳）
 
 所有子命令都接受 --project（默认取最新工程）。
 """
@@ -32,6 +36,7 @@ import sys
 from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parent))
+import chapters as chap  # noqa: E402
 import fsproj  # noqa: E402
 
 DEFAULT_PARAMS = {
@@ -539,7 +544,7 @@ def write_sentences_txt(wd: Path, transcript: dict, edit: dict, events=None) -> 
     base_cut = fsproj.complement([tuple(x) for x in edit["base_keeps"]], edit["duration"])
     lines = ["# 句子清单：[id] 起-止 文本",
              "# ［］已剪掉的词；〔词?cN〕是建议剪辑（未启用，确认后 accept --ids cN）；⏸ 句前被剪的停顿；🖱 句内的点击/按键数（滚动不计）",
-             "# ✎ 后面是已校对的字幕文字；✗ 是你在 FocuSee 里原本就剪掉的句子（不用管）"]
+             "# ✎ 后面是已校对的字幕文字；✗ 是你在 FocuSee 里原本就剪掉的句子（不用管）；§ 是章节分界（这一章从下一句开始）"]
     terms = load_hotwords()
     if terms:
         lines.append("# 术语表（标准写法，读音对得上才改成这些）：" + "、".join(terms))
@@ -553,7 +558,10 @@ def write_sentences_txt(wd: Path, transcript: dict, edit: dict, events=None) -> 
     lines.append("")
     prev_end = None
     events = events or []
+    heads = {c["sentence"]: c for c in edit.get("chapters") or []}
     for s in transcript["sentences"]:
+        if s["id"] in heads:
+            lines.append(f"§ {heads[s['id']]['id']}「{heads[s['id']]['title']}」")
         parts = []
         for w in s["words"]:
             txt = w["w"] + (w.get("p") or "")
@@ -595,6 +603,8 @@ def review_warnings(edit: dict, transcript: dict, duration: float) -> list[str]:
                 warns.append(f"{c['id']} 切完后以转折词「{nxt['w']}」开头，检查前后句意是否还连得上")
         if not c["enabled"] and c.get("activity") and c["origin"] == "agent":
             warns.append(f"{c['id']} 与画面操作重叠，未启用：{c.get('note', '')[:40]}")
+    if edit.get("chapters"):
+        warns += chap.resolve(edit, transcript, duration)[1]
     return warns
 
 
@@ -644,7 +654,8 @@ def summary(edit, duration):
     return {"source": round(duration, 1), "before": round(fsproj.total_len(base), 1),
             "after": round(fsproj.total_len(keeps), 1), "segments": len(keeps), "cuts": by,
             "suggestions": sum(1 for c in edit["cuts"] if not c["enabled"] and c["origin"] == "auto"),
-            "moves": sum(1 for m in edit.get("moves", []) if m.get("enabled", True))}
+            "moves": sum(1 for m in edit.get("moves", []) if m.get("enabled", True)),
+            "chapters": len(edit.get("chapters") or [])}
 
 
 def build_auto(pr, wd, transcript, edit, reset, overrides):
@@ -667,6 +678,7 @@ def build_auto(pr, wd, transcript, edit, reset, overrides):
         "replacements": [] if reset else (edit or {}).get("replacements", []),
         "sentence_text": {} if reset else (edit or {}).get("sentence_text", {}),
         "moves": [] if reset else (edit or {}).get("moves", []),
+        "chapters": [] if reset else (edit or {}).get("chapters", []),
         "subtitles": (edit or {}).get("subtitles", {"enabled": True}),
     }
     ev = Evidence(pr, wd, params)
@@ -726,6 +738,13 @@ def main():
     mv.add_argument("--note", default="")
     um = sub.add_parser("unmove", help="取消调换顺序")
     um.add_argument("--ids", help="m1,m2；不给就取消全部")
+    ch = sub.add_parser("chapter", help="新增/修改章节（由 agent 按语义划分并起标题）")
+    ch.add_argument("--sentence", type=int, help="这一章从第几句开始（sentences.txt 的 [id]）")
+    ch.add_argument("--title", help="章节标题")
+    ch.add_argument("--id", dest="cid", help="要修改的章节，如 ch2；不给就按 --sentence 新增")
+    uc = sub.add_parser("unchapter", help="删除章节")
+    uc.add_argument("--ids", help="ch2,ch3；不给就删除全部")
+    sub.add_parser("chapters", help="打印章节在成片里的时间，并导出 chapters.txt")
     rp = sub.add_parser("replace")
     rp.add_argument("--from", dest="src", required=True)
     rp.add_argument("--to", dest="dst", required=True)
@@ -802,6 +821,9 @@ def main():
             for c in edit["cuts"]:
                 if c["id"] in set(plan.get("accept", [])):
                     c["enabled"] = True
+            if plan.get("chapters") is not None:
+                chap.replace_chapters(edit, plan["chapters"], transcript)
+                print(f"章节 {len(edit['chapters'])} 个")
         elif args.cmd == "accept":
             ids = {x.strip() for x in args.ids.split(",") if x.strip()}
             n = 0
@@ -848,6 +870,14 @@ def main():
             before = len(edit.get("moves", []))
             edit["moves"] = [m for m in edit.get("moves", []) if ids and m["id"] not in ids]
             print(f"已取消 {before - len(edit['moves'])} 处调换顺序")
+        elif args.cmd == "chapter":
+            if args.cid is None and (args.sentence is None or not args.title):
+                sys.exit("新增章节需要 --sentence 和 --title；修改已有章节用 --id")
+            c = chap.set_chapter(edit, args.sentence, args.title, args.cid, transcript)
+            print(f"章节 {c['id']}：从第 {c['sentence']} 句开始「{c['title']}」")
+        elif args.cmd == "unchapter":
+            n = chap.remove_chapters(edit, (args.ids or "").split(","))
+            print(f"已删除 {n} 个章节")
         elif args.cmd == "replace":
             if args.glob:
                 add_global_replacement(args.src, args.dst)
@@ -861,6 +891,17 @@ def main():
     p = save_edit(wd, edit)
     st = write_sentences_txt(wd, transcript, edit, fsproj.input_events(pr))
     out = {"edit": str(p), "sentences_txt": str(st), "summary": summary(edit, D)}
+    exp = chap.write_export(wd, edit, transcript, D)
+    if exp:
+        out["chapters_txt"] = exp["path"]
+        if args.cmd in ("chapter", "unchapter", "chapters", "plan"):
+            for c in exp["chapters"]:
+                print(f"{chap.fmt_ts(c['start'], exp['total'] >= 3600)} {c['title']}  "
+                      f"[{c['id']} 第 {c['start_sentence']} 句起，{c['end'] - c['start']:.0f} 秒]")
+            for n in chap.notes(exp["chapters"]):
+                print("提示：" + n)
+    elif args.cmd == "chapters":
+        print("还没有章节：用 chapter --sentence N --title 标题 添加，或在 plan.json 里写 chapters")
     if args.cmd == "auto":
         out["audio"] = edit.get("audio")
     w = review_warnings(edit, transcript, D)

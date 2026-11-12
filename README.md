@@ -19,7 +19,9 @@
 7. 打开本地审阅页（可切到「逐字稿」视图，像改文档一样选中删除、双击改字）：播放剪后效果并叠加字幕预览，按字幕或时间轴还原/追加剪辑，保存即写回工程。
 8. 调换前后顺序：逐字稿里拖句首的 ⠿ 把一句话挪到别处，剪后预览立刻按新顺序播放。FocuSee 本身会把片段按时间排回去，所以点「生成调序工程」后，会把录屏、摄像头、声音、鼠标轨迹按新顺序重新拼一份，另存为 `<原名> 调序.focusee`，原工程不动。
 
-剪辑逻辑参考了 [screen-studio-editor](https://github.com/oil-oil/screen-studio-editor) 的思路（音频证据自动剪、语义交给 agent、画面操作保护），代码是重新写的。
+9. 章节：Claude 读逐字稿按内容分章并起标题，审阅页里可以改标题、拖动分界、增删章节；时间按剪后成片（含调换顺序）自动换算，导出 `00:00 开场` 这样的时间戳列表（工作目录里的 `chapters.txt`，页面上也能一键复制），直接贴进 B 站 / YouTube 简介。FocuSee 工程里没有章节字段，所以章节不写进工程。
+
+剪辑逻辑参考了 [screen-studio-editor](https://github.com/oil-oil/screen-studio-editor) 的思路（音频证据自动剪、语义交给 agent、画面操作保护），章节参考了 [oil-subtitle](https://github.com/oil-oil/oil-subtitle) 的做法（按字幕划分少量宽粒度章节），代码都是重新写的。
 
 FocuSee 里原有的缩放、标注、你手动剪过的部分都不会被破坏。
 
@@ -75,7 +77,8 @@ New-Item -ItemType Junction -Path "$env:USERPROFILE\.claude\skills\videocut" -Ta
   scripts/fsproj.py      工程读写、区间运算、录制操作事件
   scripts/transcribe.py  抽音频 + 百炼 fun-asr
   scripts/audio.py       实测静音、波形安静点
-  scripts/analyze.py     自动剪辑方案 + agent 计划/重录/还原/字幕校对/调序记录
+  scripts/analyze.py     自动剪辑方案 + agent 计划/重录/还原/字幕校对/调序记录/章节
+  scripts/chapters.py    章节：成片时间换算、导出时间戳 chapters.txt
   scripts/subtitles.py   字幕断句与校对文字对齐
   scripts/apply.py       写回 playTracks 和字幕（带备份）
   scripts/make_proxy.py  审阅用低清预览视频

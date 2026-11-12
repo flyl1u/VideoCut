@@ -7,6 +7,7 @@
   uv run apply.py --project "<xxx.focusee>" [--dry-run] [--force] [--no-subtitles]
 
 --dry-run 不写工程，只输出汇总，并在工作目录生成 subtitles.preview.srt 供检查断句。
+有章节时（edit.json → chapters）同时导出 chapters.txt（成片时间戳，FocuSee 工程存不了章节）。
 写入前会把 configure.focuseeproj 备份成 configure.focuseeproj.bak-时间戳。
 检测到 FocuSee 正在运行时默认拒绝写入（退出码 3），确认工程没在 FocuSee 里打开后可加 --force。
 """
@@ -20,6 +21,7 @@ from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parent))
 import analyze  # noqa: E402
+import chapters as chap  # noqa: E402
 import fsproj  # noqa: E402
 import subtitles  # noqa: E402
 
@@ -90,6 +92,10 @@ def apply_edit(project_arg, edit: dict | None = None, force: bool = False, dry_r
     warns = analyze.review_warnings(edit, transcript, D)
     if warns:
         result["review"] = warns
+    exp = chap.write_export(wd, edit, transcript, D)
+    if exp:
+        result["chapters_txt"] = exp["path"]
+        result["chapters_text"] = exp["text"]
     if dry_run:
         if items:
             (wd / "subtitles.preview.srt").write_text(to_srt(items), "utf-8")

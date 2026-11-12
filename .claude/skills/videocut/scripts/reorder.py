@@ -394,6 +394,7 @@ def remap_edit(edit: dict, f: Mapper, idmap: dict, new_dir: Path) -> dict:
             cuts.append(nc)
     e["cuts"] = cuts
     e["sentence_text"] = {str(idmap.get(int(k), k)): v for k, v in (edit.get("sentence_text") or {}).items()}
+    e["chapters"] = [dict(c, sentence=idmap.get(c["sentence"], c["sentence"])) for c in edit.get("chapters") or []]
     e["moves"] = []
     e["reordered_from"] = edit.get("project")
     return e

@@ -23,6 +23,7 @@ HERE = Path(__file__).resolve().parent
 sys.path.insert(0, str(HERE))
 import analyze  # noqa: E402
 import apply as applier  # noqa: E402
+import chapters as chap  # noqa: E402
 import fsproj  # noqa: E402
 import subtitles  # noqa: E402
 
@@ -130,7 +131,7 @@ class Handler(BaseHTTPRequestHandler):
 
     def do_POST(self):
         path, _, query = self.path.partition("?")
-        if path not in ("/api/save", "/api/preview", "/api/doc", "/api/reorder"):
+        if path not in ("/api/save", "/api/preview", "/api/doc", "/api/reorder", "/api/chapters"):
             return self._json(404, {"error": "not found"})
         if self.headers.get("Origin") not in (None, f"http://127.0.0.1:{self.server.server_port}",
                                               f"http://localhost:{self.server.server_port}"):
@@ -149,6 +150,15 @@ class Handler(BaseHTTPRequestHandler):
                 doc = subtitles.doc_tokens(transcript, analyze.params_of(edit), edit.get("replacements") or [],
                                            edit.get("sentence_text") or {})
                 return self._json(200, {"sentences": doc})
+            except Exception as e:
+                return self._json(500, {"error": f"{type(e).__name__}: {e}"})
+        if path == "/api/chapters":  # 章节在成片里的时间 + 导出文本，不写文件
+            try:
+                pr = fsproj.load(self.project_dir)
+                transcript = json.loads((self.wd / "transcript.json").read_text("utf-8"))
+                chs, warns, total = chap.resolve(edit, transcript, pr.duration)
+                return self._json(200, {"chapters": chs, "warnings": warns + chap.notes(chs), "total": total,
+                                        "text": chap.export_text(chs, total), "file": str(self.wd / chap.EXPORT_NAME)})
             except Exception as e:
                 return self._json(500, {"error": f"{type(e).__name__}: {e}"})
         if path == "/api/preview":  # 只算字幕，不写任何文件

@@ -10,6 +10,7 @@
   --accent: #2f6fdb; --accent-ink: #ffffff; --hover: #efeee9; --now: #fff3c4;
   --pause: #4c8df6; --filler: #e5a00d; --retake: #e04b4b; --manual: #8d5cd6; --base: #9a9a94;
   --keep: #3aa76d; --cut-ink: #a3a29c; --shadow: 0 1px 2px rgba(0,0,0,.06), 0 4px 16px rgba(0,0,0,.05);
+  --chap: #0f8a8a;
 }
 @media (prefers-color-scheme: dark) {
   :root:not([data-theme="light"]) {
@@ -69,10 +70,17 @@ main { flex: 1; display: grid; grid-template-columns: minmax(0, 1.25fr) minmax(0
 .legend { display: flex; gap: 10px; flex-wrap: wrap; }
 .legend i { display: inline-block; width: 10px; height: 10px; border-radius: 2px; margin-right: 4px; vertical-align: -1px; }
 .tl-scroll { overflow-x: auto; border: 1px solid var(--line); border-radius: 8px; }
-.tl { position: relative; height: 132px; min-width: 100%; cursor: crosshair; user-select: none; }
+.tl { position: relative; height: 150px; min-width: 100%; cursor: crosshair; user-select: none; }
 .tl .row { position: absolute; left: 0; right: 0; }
-.tl .r-keep { top: 6px; height: 18px; }
-.tl .r0 { top: 34px; height: 28px; } .tl .r1 { top: 66px; height: 28px; } .tl .r2 { top: 98px; height: 28px; }
+.tl .r-keep { top: 22px; height: 18px; }
+.tl .r0 { top: 50px; height: 28px; } .tl .r1 { top: 82px; height: 28px; } .tl .r2 { top: 114px; height: 28px; }
+/* 章节分界：竖线 + 顶部标签，按住左右拖动改分界（吸附到句首） */
+.tl .chmark { position: absolute; top: 0; bottom: 0; width: 9px; margin-left: -4px; cursor: ew-resize; z-index: 3; }
+.tl .chmark::before { content: ""; position: absolute; left: 4px; top: 0; bottom: 0; width: 1px; background: var(--chap); }
+.tl .chlab { position: absolute; top: 1px; margin-left: 2px; font-size: 11px; line-height: 16px; padding: 0 5px; border-radius: 4px; z-index: 2;
+  white-space: nowrap; overflow: hidden; text-overflow: ellipsis; color: #fff; background: var(--chap); pointer-events: none; box-sizing: border-box; }
+.tl .chmark:hover::before, .tl .chmark.dragging::before { width: 3px; left: 3px; }
+.tl .chlab.dragging { box-shadow: 0 0 0 2px var(--panel); max-width: none !important; z-index: 4; }
 .tl .blk { position: absolute; top: 0; bottom: 0; border-radius: 2px; min-width: 2px; cursor: pointer; }
 .tl .blk.off { background: transparent !important; outline: 1px dashed var(--muted); outline-offset: -1px; opacity: .8; }
 .tl .blk:hover { filter: brightness(1.15); outline: 1px solid var(--ink); }
@@ -80,7 +88,7 @@ main { flex: 1; display: grid; grid-template-columns: minmax(0, 1.25fr) minmax(0
 .tl .basecut { position: absolute; top: 0; bottom: 0;
   background: repeating-linear-gradient(45deg, var(--base) 0 3px, transparent 3px 6px); opacity: .5; pointer-events: none; }
 .tl .ph { position: absolute; top: 0; bottom: 0; width: 2px; background: var(--ink); pointer-events: none; }
-.tl .sel { position: absolute; top: 30px; bottom: 3px; background: color-mix(in srgb, var(--manual) 35%, transparent); border: 1px solid var(--manual); pointer-events: none; }
+.tl .sel { position: absolute; top: 46px; bottom: 3px; background: color-mix(in srgb, var(--manual) 35%, transparent); border: 1px solid var(--manual); pointer-events: none; }
 .pause { background: var(--pause); } .filler { background: var(--filler); } .retake { background: var(--retake); } .manual { background: var(--manual); }
 .tips { color: var(--muted); font-size: 12px; padding: 0 12px 12px; }
 .tips kbd { border: 1px solid var(--line); border-bottom-width: 2px; border-radius: 4px; padding: 0 4px; font-size: 11px; }
@@ -162,6 +170,36 @@ main { flex: 1; display: grid; grid-template-columns: minmax(0, 1.25fr) minmax(0
 .tl .keep.moved { background: var(--manual); }
 .note.n-move { color: var(--manual); cursor: pointer; }
 .note.n-move:hover { text-decoration: underline; }
+/* 章节 */
+.chapcard { margin-top: 12px; display: flex; flex-direction: column; max-height: 34%; min-height: 0; }
+.ch-head { display: flex; align-items: center; gap: 8px; padding: 8px 12px; border-bottom: 1px solid var(--line); flex-wrap: wrap; }
+.ch-head b { font-weight: 600; }
+.ch-head .muted { color: var(--muted); font-size: 12px; }
+.btn.sm { padding: 2px 10px; font-size: 13px; }
+.chlist { overflow-y: auto; min-height: 0; padding: 4px 0; }
+.chi { display: grid; grid-template-columns: 52px minmax(0, 1fr) auto 24px; gap: 6px; align-items: center; padding: 2px 8px 2px 12px; border-left: 3px solid transparent; }
+.chi:hover { background: var(--hover); }
+.chi.now { border-left-color: var(--chap); background: color-mix(in srgb, var(--chap) 8%, transparent); }
+.chi .cht { font-variant-numeric: tabular-nums; color: var(--chap); cursor: pointer; font-size: 13px; }
+.chi .cht:hover { text-decoration: underline; }
+.chi input { font: inherit; width: 100%; min-width: 0; border: 1px solid transparent; border-radius: 6px; padding: 2px 6px; background: transparent; color: var(--ink); }
+.chi input:hover { border-color: var(--line); }
+.chi input:focus { border-color: var(--chap); background: var(--panel); outline: none; }
+.chi .chs { color: var(--muted); font-size: 12px; white-space: nowrap; font-variant-numeric: tabular-nums; }
+.chi .chdel { border: 0; background: transparent; color: var(--muted); cursor: pointer; border-radius: 6px; padding: 0; height: 22px; }
+.chi .chdel:hover { background: var(--hover); color: var(--retake); }
+.chi.ignored input, .chi.ignored .cht { opacity: .5; text-decoration: line-through; }
+.chwarn { font-size: 12px; color: var(--filler); padding: 0 12px 8px; white-space: pre-line; max-height: 4.6em; overflow-y: auto; flex: none; }
+.chwarn:empty { display: none; }
+.chempty { color: var(--muted); font-size: 13px; padding: 6px 12px 10px; }
+.chh, .chrow { color: var(--chap); font-weight: 600; cursor: grab; user-select: none; border-top: 1px dashed color-mix(in srgb, var(--chap) 55%, transparent); }
+.chh { font-size: 14px; line-height: 1.6; margin: 6px 0 6px; padding-top: 6px; }
+.chrow { font-size: 13px; padding: 6px 12px 0; margin-top: 4px; }
+.chh::before, .chrow::before { content: "§ "; opacity: .7; }
+.chh:hover, .chrow:hover { background: color-mix(in srgb, var(--chap) 8%, transparent); }
+.doc p:empty { display: none; }
+.sent.droptgt, .ds.droptgt { box-shadow: inset 0 3px 0 var(--chap); }
+@media (max-width: 960px) { .chapcard { max-height: none; } .chlist { max-height: 260px; } }
 .doc-help { font-size: 12px; color: var(--muted); padding: 8px 18px 0; }
 .doc-help kbd { border: 1px solid var(--line); border-bottom-width: 2px; border-radius: 4px; padding: 0 4px; font-size: 11px; }
 [hidden] { display: none !important; }
@@ -192,6 +230,16 @@ main { flex: 1; display: grid; grid-template-columns: minmax(0, 1.25fr) minmax(0
         <span class="time" id="clock">00:00.0</span>
       </div>
     </div>
+    <div class="card chapcard" id="chapcard">
+      <div class="ch-head">
+        <b>章节</b><span class="muted" id="chcount"></span>
+        <span class="spacer"></span>
+        <button class="btn sm" id="chadd" title="从当前播放到的这一句开始新的一章">＋ 从这里分章</button>
+        <button class="btn sm" id="chcopy" title="复制「00:00 标题」格式的成片时间戳，贴进 B 站 / YouTube 简介">复制时间戳</button>
+      </div>
+      <div class="chlist" id="chlist"></div>
+      <div class="chwarn" id="chwarn"></div>
+    </div>
   </section>
   <section class="card tlcard">
       <div class="tl-wrap">
@@ -203,6 +251,7 @@ main { flex: 1; display: grid; grid-template-columns: minmax(0, 1.25fr) minmax(0
             <span><i class="retake"></i>重录</span>
             <span><i class="manual"></i>手动</span>
             <span><i style="background:repeating-linear-gradient(45deg,var(--base) 0 2px,transparent 2px 4px)"></i>原工程已剪</span>
+            <span><i style="background:var(--chap);width:3px"></i>章节分界</span>
           </div>
           <div class="spacer"></div>
           <label>缩放 <input type="range" id="zoom" min="1" max="30" value="1" step="1"></label>
@@ -210,7 +259,8 @@ main { flex: 1; display: grid; grid-template-columns: minmax(0, 1.25fr) minmax(0
         <div class="tl-scroll" id="tlscroll"><div class="tl" id="tl"></div></div>
       </div>
       <div class="tips">
-        点击色块：还原 / 重新剪掉 · 在时间轴上拖选：新增手动剪辑 · 点空白处：跳转<br>
+        点击色块：还原 / 重新剪掉 · 在时间轴上拖选：新增手动剪辑 · 点空白处：跳转 · 左右拖动青色章节线：改章节分界<br>
+        章节：在章节列表里直接改标题、点时间跳转、× 删除；逐字稿 / 逐句里的 <b>§ 标题</b> 可以拖到别的句子上改分界<br>
         逐字稿：拖选文字按 <kbd>Delete</kbd> 删除、双击一句改字 · 逐句：点字删 / 留这个字，<kbd>Shift</kbd>+点：删 / 留一整段 · 点停顿标记：切换这处气口 · 左侧方块：整句删 / 留<br>
         <kbd>空格</kbd> 播放暂停 · <kbd>←</kbd><kbd>→</kbd> 前后 2 秒 · <kbd>Ctrl</kbd>+<kbd>Z</kbd> 撤销 · <kbd>Ctrl</kbd>+<kbd>S</kbd> 保存
       </div>
@@ -238,7 +288,7 @@ main { flex: 1; display: grid; grid-template-columns: minmax(0, 1.25fr) minmax(0
 <div class="dropmark" id="dropmark" hidden></div>
 <div class="dbar" id="dbar" hidden>
   <button class="danger" data-act="cut">删除</button><button data-act="restore">还原</button>
-  <button data-act="play">▶ 播放</button><button data-act="edit">改字</button>
+  <button data-act="play">▶ 播放</button><button data-act="edit">改字</button><button data-act="chapter">设为章节起点</button>
 </div>
 
 <script>
@@ -251,6 +301,7 @@ let D = 0, T = null, edit = null, words = [], sentences = [];
 let past = [], future = [], dirty = false, filter = "all", mode = "edited", anchor = null;
 let video = null, derived = null, subs = [], subTimer = null, lastSub = null;
 let view = "list", doc = [], docFlat = [], docSel = null, lastDocTok = -1, docOrder = [], dragSid = null, dropAt = null, curSeg = -1;
+let sentById = new Map(), chapRes = { chapters: [], warnings: [], text: "", total: 0 }, dragCh = null, chDrag = null, lastCh = null;
 
 // ------------------------------------------------------------ 区间运算（与 fsproj.py 一致）
 function merge(rs) {
@@ -352,11 +403,11 @@ function esc(s) { return String(s).replace(/[&<>"']/g, c => ({ "&": "&amp;", "<"
 function toast(msg, ms = 2600) { const el = $("#toast"); el.textContent = msg; el.classList.add("show"); clearTimeout(toast._t); toast._t = setTimeout(() => el.classList.remove("show"), ms); }
 
 // ------------------------------------------------------------ 编辑操作（都经过 commit，支持撤销）
-function snapshot() { return JSON.stringify({ c: edit.cuts, t: edit.sentence_text || {}, m: edit.moves || [] }); }
+function snapshot() { return JSON.stringify({ c: edit.cuts, t: edit.sentence_text || {}, m: edit.moves || [], ch: edit.chapters || [] }); }
 function restoreSnap(snap) {
   const o = JSON.parse(snap);
   const textChanged = JSON.stringify(edit.sentence_text || {}) !== JSON.stringify(o.t);
-  edit.cuts = o.c; edit.sentence_text = o.t; edit.moves = o.m || [];
+  edit.cuts = o.c; edit.sentence_text = o.t; edit.moves = o.m || []; edit.chapters = o.ch || [];
   if (textChanged) loadDoc();
 }
 function commit(fn, msg) {
@@ -460,6 +511,125 @@ function cancelMove(id) {
   commit(() => { edit.moves = (edit.moves || []).filter(m => m.id !== id); }, "已取消调换顺序");
 }
 const moveOf = (sid) => (edit.moves || []).find(m => m.enabled !== false && (m.sentences || []).includes(sid));
+
+// ---------- 章节：锚定在「从哪一句开始」，成片时间由服务端按剪辑和调换顺序换算（/api/chapters）
+const chapOf = (sid) => (edit.chapters || []).find(c => c.sentence === sid);
+function addChapter(sid, title = "新章节") {
+  if (sid === null || sid === undefined || !sentById.has(sid)) return toast("没找到要分章的句子");
+  const ex = chapOf(sid); if (ex) { focusChapter(ex.id); return toast(`第 ${sid} 句已经是「${ex.title}」的起点`); }
+  let n = 0; for (const c of edit.chapters || []) { const k = /^ch(\d+)$/.exec(c.id || ""); if (k) n = Math.max(n, +k[1]); }
+  const id = "ch" + (n + 1);
+  commit(() => {
+    edit.chapters = [...(edit.chapters || []), { id, sentence: sid, title, origin: "user" }].sort((a, b) => a.sentence - b.sentence);
+  }, `从第 ${sid} 句开始新的一章，在章节列表里改标题`);
+  focusChapter(id, true);
+}
+function renameChapter(id, title) {
+  title = title.replace(/\s+/g, " ").trim();
+  const c = (edit.chapters || []).find(x => x.id === id); if (!c) return;
+  if (!title) { toast("章节标题不能为空"); return renderChapters(true); }
+  if (title === c.title) return;
+  commit(() => { c.title = title; }, "章节标题已修改");
+}
+function moveChapter(id, sid) {
+  const c = (edit.chapters || []).find(x => x.id === id); if (!c || c.sentence === sid) return;
+  const ex = chapOf(sid); if (ex) return toast(`第 ${sid} 句已经是「${ex.title}」的起点`);
+  commit(() => { c.sentence = sid; edit.chapters.sort((a, b) => a.sentence - b.sentence); }, `「${c.title}」改从第 ${sid} 句开始`);
+}
+function deleteChapter(id) {
+  const c = (edit.chapters || []).find(x => x.id === id); if (!c) return;
+  commit(() => { edit.chapters = edit.chapters.filter(x => x.id !== id); }, `已删除章节「${c.title}」`);
+}
+function focusChapter(id, select) {
+  setTimeout(() => {
+    const inp = document.querySelector(`#chlist input[data-chid="${id}"]`); if (!inp) return;
+    inp.scrollIntoView({ block: "nearest" }); inp.focus(); if (select) inp.select();
+  }, 0);
+}
+// 播放头所在的句子；落在两句之间就取后面那句
+function sentenceAt(t) {
+  let best = null;
+  for (const s of sentences) { if (s.start <= t + 0.05) best = s; else break; }
+  if (best && t > best.end + 0.3) { const nx = sentences.find(s => s.start > t); if (nx) best = nx; }
+  return best ? best.id : (sentences[0] ? sentences[0].id : null);
+}
+// 时间轴：源时间 → 最近的句首
+function nearestSentence(t) {
+  let best = null, d = Infinity;
+  for (const s of sentences) { const x = Math.abs(s.start - t); if (x < d) { d = x; best = s; } }
+  return best;
+}
+const chSourceStart = (c) => { const s = sentById.get(c.sentence); return s ? s.start : 0; };
+async function fetchChapters() {
+  if (!(edit.chapters || []).length) { chapRes = { chapters: [], warnings: [], text: "", total: 0 }; renderChapters(); return; }
+  try {
+    const r = await fetch("/api/chapters", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(edit) });
+    const j = await r.json(); if (!r.ok) throw new Error(j.error);
+    chapRes = j; renderChapters();
+  } catch (e) { $("#chwarn").textContent = "章节时间没算出来：" + e.message; }
+}
+function fmtTs(t, hours) {
+  const s = Math.floor(Math.max(0, t) + 1e-6), h = Math.floor(s / 3600), m = Math.floor(s % 3600 / 60), ss = s % 60;
+  const p2 = (x) => String(x).padStart(2, "0");
+  return hours ? `${h}:${p2(m)}:${p2(ss)}` : `${p2(m)}:${p2(ss)}`;
+}
+function renderChapters(force) {
+  const box = $("#chlist");
+  if (!force && box.contains(document.activeElement) && document.activeElement.tagName === "INPUT") return; // 正在改标题，别打断
+  const chs = edit.chapters || [];
+  const res = new Map((chapRes.chapters || []).map(c => [c.id, c]));
+  const hours = (chapRes.total || 0) >= 3600;
+  // 按成片顺序列出（服务端算好的在前，被忽略的放最后）
+  const ord = [...chs].sort((a, b) => {
+    const ra = res.get(a.id), rb = res.get(b.id);
+    if (ra && rb) return ra.start - rb.start;
+    if (ra || rb) return ra ? -1 : 1;
+    return derived.ed(chSourceStart(a)) - derived.ed(chSourceStart(b));
+  });
+  $("#chcount").textContent = chs.length ? `${chs.length} 章` + (chapRes.total ? ` · 成片 ${fmtLen(chapRes.total)}` : "") : "";
+  $("#chcopy").disabled = !chapRes.text;
+  if (!chs.length) {
+    box.innerHTML = `<div class="chempty">还没有章节。让 Claude 按内容分章，或播放到某句时点「＋ 从这里分章」。</div>`;
+    $("#chwarn").textContent = ""; lastCh = null; return;
+  }
+  box.innerHTML = ord.map(c => {
+    const r = res.get(c.id);
+    const ignored = !r && (chapRes.warnings || []).some(w => w.startsWith(`章节 ${c.id}「`) && w.endsWith("已忽略"));
+    const t = r ? fmtTs(r.start, hours) : (ignored ? "忽略" : "··:··");
+    const dur = r ? fmtLen(r.end - r.start) : "";
+    return `<div class="chi${ignored ? " ignored" : ""}" data-chrow="${c.id}">` +
+      `<span class="cht" data-chseek="${c.id}" title="跳到这一章（第 ${r ? r.start_sentence : c.sentence} 句）">${t}</span>` +
+      `<input data-chid="${c.id}" value="${esc(c.title)}" title="改标题：回车确认，Esc 取消">` +
+      `<span class="chs" title="这一章在成片里的长度">${dur}</span>` +
+      `<button class="chdel" data-chdel="${c.id}" title="删除这一章（内容不受影响，并入上一章）">✕</button></div>`;
+  }).join("");
+  $("#chwarn").textContent = (chapRes.warnings || []).map(w => "⚠ " + w).join("\n");
+  lastCh = null; highlightChapter(true);
+}
+function highlightChapter(force) {
+  if (!video || !(chapRes.chapters || []).length) return;
+  const t = editedTime(video.currentTime);
+  let cur = null; for (const c of chapRes.chapters) if (c.start <= t + 0.01) cur = c.id;
+  if (cur === lastCh && !force) return;
+  lastCh = cur;
+  document.querySelectorAll(".chi.now").forEach(e => e.classList.remove("now"));
+  const el = cur && document.querySelector(`.chi[data-chrow="${cur}"]`); if (el) el.classList.add("now");
+}
+function seekChapter(id) {
+  const r = (chapRes.chapters || []).find(c => c.id === id), c = (edit.chapters || []).find(x => x.id === id);
+  const t = r ? r.source_start : (c ? chSourceStart(c) : null);
+  if (t === null) return;
+  seek(Math.max(0, t - 0.05)); if (video && video.paused) togglePlay();
+}
+async function copyChapters() {
+  const text = chapRes.text || ""; if (!text) return;
+  try { await navigator.clipboard.writeText(text); }
+  catch (e) {
+    const ta = document.createElement("textarea"); ta.value = text; document.body.appendChild(ta); ta.select();
+    document.execCommand("copy"); ta.remove();
+  }
+  toast("已复制章节时间戳（成片时间），可以直接贴进视频简介：\n" + text.trim(), 5000);
+}
 function setSentenceText(sid, text) {
   const cur = doc.find(d => d.id === sid);
   text = text.trim();
@@ -478,6 +648,7 @@ function renderStats() {
   $("#stats").innerHTML =
     `<span>原片 <b>${fmtLen(before)}</b></span><span>剪后 <b>${fmtLen(after)}</b>（−${fmtLen(before - after)}）</span>` +
     `<span>${derived.keeps.length} 段</span>` + (derived.moves.length ? `<span>调换顺序 <b>${derived.moves.length}</b></span>` : "") +
+    ((edit.chapters || []).length ? `<span>章节 <b>${edit.chapters.length}</b></span>` : "") +
     Object.keys(REASON).map(r => `<span>${REASON[r]} <b>${by[r]}</b></span>`).join("");
   $("#undo").disabled = !past.length; $("#redo").disabled = !future.length;
   $("#reorder").hidden = !derived.moves.length && !reorderBusy;
@@ -495,6 +666,13 @@ function renderTimeline() {
   lanes.forEach((cs, i) => {
     h += `<div class="row r${i}">` + derived.baseCuts.map(r => `<div class="basecut" style="left:${pct(r[0])};width:${pct(r[1] - r[0])}"></div>`).join("") +
       cs.map(c => `<div class="blk ${c.reason}${c.enabled ? "" : " off"}" data-id="${c.id}" style="left:${pct(c.start)};width:${pct(c.end - c.start)}" title="${esc(`${REASON[c.reason] || c.reason}${c.enabled ? "" : "（已还原）"} ${fmt(c.start)}–${fmt(c.end)} ${(c.end - c.start).toFixed(2)}s${c.note ? "\n" + c.note : ""}\n点击${c.enabled ? "还原" : "重新剪掉"}`)}"></div>`).join("") + `</div>`;
+  });
+  // 标签最宽到下一条分界线，免得挤在一起时互相盖住
+  const marks = (edit.chapters || []).map(c => ({ c, t: chSourceStart(c) })).sort((x, y) => x.t - y.t);
+  marks.forEach(({ c, t }, i) => {
+    const room = (i + 1 < marks.length ? marks[i + 1].t : D) - t;
+    h += `<div class="chmark" data-ch="${c.id}" style="left:${pct(t)}" title="${esc(`章节「${c.title}」从第 ${c.sentence} 句开始\n左右拖动改分界，单击跳到这里`)}"></div>` +
+      `<div class="chlab" data-chl="${c.id}" style="left:${pct(t)};max-width:calc(${pct(room)} - 4px)">${esc(c.title)}</div>`;
   });
   h += `<div class="ph" id="ph"></div><div class="sel" id="sel" hidden></div>`;
   tl.innerHTML = h;
@@ -545,6 +723,8 @@ function renderList() {
     const fix = (edit.sentence_text || {})[String(s.id)];
     if (fix) extra += `<div class="note fix">✎ 字幕已校对：${esc(fix.replace(/\//g, " / "))}</div>`;
     const visible = filter === "all" || (filter === "any" ? sentHasCut : reasons.has(filter));
+    const chx = chapOf(s.id);
+    if (chx) h += `<div class="chrow" draggable="true" data-ch="${chx.id}" title="章节分界：拖到别的句子上改分界，单击跳到这里">${esc(chx.title)}</div>`;
     if (!visible) continue;
     shown++;
     const tog = keptCount === 0 ? "cut" : (sentHasCut ? "part" : "");
@@ -575,7 +755,9 @@ function renderDoc() {
   docOrder = ordered.map(s => s.id);
   for (const s of ordered) {
     const mvx = moveOf(s.id), pmv = prev ? moveOf(prev.id) : null;
-    if (prev !== null && (s.start - prev.end > 2.5 || s.start < prev.start || (mvx || null) !== (pmv || null))) h += "</p><p>";
+    const chx = chapOf(s.id);
+    if (chx) h += `</p><div class="chh" draggable="true" data-ch="${chx.id}" title="章节分界：拖到别的句子上改分界，单击跳到这里">${esc(chx.title)}</div><p>`;
+    else if (prev !== null && (s.start - prev.end > 2.5 || s.start < prev.start || (mvx || null) !== (pmv || null))) h += "</p><p>";
     prev = s;
     const sc = coverOf(s.start, s.end);
     let inner = "";
@@ -594,7 +776,7 @@ function renderDoc() {
   el.scrollTop = keepScroll;
   lastDocTok = -1; hideBar();
 }
-function renderAll() { derive(); renderStats(); renderTimeline(); if (view === "doc") renderDoc(); else renderList(); highlightNow(true); schedulePreview(); }
+function renderAll() { derive(); renderStats(); renderTimeline(); if (view === "doc") renderDoc(); else renderList(); renderChapters(); highlightNow(true); schedulePreview(); }
 // 字幕预览：用和写入工程完全相同的算法在服务端生成
 function schedulePreview() {
   clearTimeout(subTimer);
@@ -603,6 +785,7 @@ function schedulePreview() {
       const r = await fetch("/api/preview", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(edit) });
       if (r.ok) { subs = (await r.json()).items || []; lastSub = null; }
     } catch (e) {}
+    fetchChapters();
   }, 350);
 }
 function updateSubtitle() {
@@ -664,6 +847,7 @@ function tick() {
   if (video && !video.paused) maybeSkip();
   updatePlayhead();
   highlightNow(false);
+  highlightChapter(false);
   updateSubtitle();
   requestAnimationFrame(tick);
 }
@@ -746,14 +930,20 @@ function bind() {
   docEl.addEventListener("mouseup", (e) => setTimeout(() => onDocSelect(e), 0));
   docEl.addEventListener("dblclick", (e) => { const s = e.target.closest(".ds"); if (s) startEdit(+s.dataset.s); });
   docEl.addEventListener("scroll", () => { hideBar(); $("#dropmark").hidden = true; });
-  docEl.addEventListener("click", (e) => { const u = e.target.closest(".mvx"); if (u) { e.stopPropagation(); cancelMove(u.dataset.unmove); } });
+  docEl.addEventListener("click", (e) => {
+    const u = e.target.closest(".mvx"); if (u) { e.stopPropagation(); cancelMove(u.dataset.unmove); return; }
+    const hd = e.target.closest(".chh"); if (hd) seekChapter(hd.dataset.ch);
+  });
   docEl.addEventListener("dragstart", (e) => {
+    const hd = e.target.closest && e.target.closest(".chh");
+    if (hd) { startChDrag(e, hd); return; }
     const g = e.target.closest && e.target.closest(".grip"); if (!g) { e.preventDefault(); return; }
     dragSid = +g.dataset.g; hideBar(); window.getSelection()?.removeAllRanges();
     e.dataTransfer.effectAllowed = "move"; e.dataTransfer.setData("text/plain", String(dragSid));
     const ds = g.closest(".ds"); e.dataTransfer.setDragImage(ds, 10, 10); setTimeout(() => ds.classList.add("dragging"), 0);
   });
   docEl.addEventListener("dragover", (e) => {
+    if (dragCh !== null) { chDragOver(e, ".ds"); return; }
     if (dragSid === null) return;
     const ds = e.target.closest && e.target.closest(".ds"); const mark = $("#dropmark");
     if (!ds) return;
@@ -773,6 +963,7 @@ function bind() {
     dropAt = target;
   });
   docEl.addEventListener("drop", (e) => {
+    if (dragCh !== null) { chDrop(e); return; }
     if (dragSid === null) return;
     e.preventDefault();
     const sid = dragSid, target = dropAt;
@@ -792,9 +983,33 @@ function bind() {
     else if (act === "restore") restoreSpan(a, b);
     else if (act === "play") { seek(a); if (video && video.paused) togglePlay(); }
     else if (act === "edit") startEdit(sids[0]);
+    else if (act === "chapter") addChapter(sids[0]);
   };
+  // 章节列表
+  $("#chadd").onclick = () => addChapter(sentenceAt(video ? video.currentTime : 0));
+  $("#chcopy").onclick = copyChapters;
+  const chl = $("#chlist");
+  chl.addEventListener("click", (e) => {
+    const s = e.target.closest("[data-chseek]"); if (s) return seekChapter(s.dataset.chseek);
+    const d = e.target.closest("[data-chdel]"); if (d) return deleteChapter(d.dataset.chdel);
+  });
+  chl.addEventListener("change", (e) => { if (e.target.dataset.chid) renameChapter(e.target.dataset.chid, e.target.value); });
+  chl.addEventListener("keydown", (e) => {
+    const inp = e.target; if (!inp.dataset || !inp.dataset.chid) return;
+    if (e.key === "Enter") { e.preventDefault(); inp.blur(); }
+    else if (e.key === "Escape") { const c = (edit.chapters || []).find(x => x.id === inp.dataset.chid); if (c) inp.value = c.title; inp.blur(); }
+  });
+  chl.addEventListener("focusout", () => setTimeout(() => { if (!chl.contains(document.activeElement)) renderChapters(); }, 0));
+  // 逐句视图：拖 § 章节行到别的句子上
+  const listEl = $("#list");
+  listEl.addEventListener("dragstart", (e) => { const r = e.target.closest && e.target.closest(".chrow"); if (r) startChDrag(e, r); else e.preventDefault(); });
+  listEl.addEventListener("dragover", (e) => { if (dragCh !== null) chDragOver(e, ".sent"); });
+  listEl.addEventListener("drop", (e) => { if (dragCh !== null) chDrop(e); });
+  listEl.addEventListener("dragend", endChDrag);
+  docEl.addEventListener("dragend", endChDrag);
   $("#list").onclick = (e) => {
     const t = e.target;
+    const cr = t.closest && t.closest(".chrow"); if (cr) { seekChapter(cr.dataset.ch); return; }
     if (t.dataset.seek !== undefined) { seek(+t.dataset.seek); if (video && video.paused) togglePlay(); return; }
     if (t.dataset.tog !== undefined) { toggleSentence(sentences[+t.dataset.tog]); return; }
     if (t.dataset.cid !== undefined) { const c = edit.cuts.find(x => x.id === t.dataset.cid); if (c) toggleCut(c); return; }
@@ -808,9 +1023,27 @@ function bind() {
   const tAt = (e) => { const r = tl.getBoundingClientRect(); return Math.max(0, Math.min(D, (e.clientX - r.left) / r.width * D)); };
   tl.addEventListener("mousedown", (e) => {
     if (e.button !== 0) return;
+    const mk = e.target.closest(".chmark");
+    if (mk) { // 拖章节分界：吸附到最近的句首
+      const c = (edit.chapters || []).find(x => x.id === mk.dataset.ch);
+      if (c) { e.preventDefault(); chDrag = { id: c.id, x: e.clientX, t: chSourceStart(c), sid: c.sentence, moved: false }; }
+      return;
+    }
     drag = { x: e.clientX, t0: tAt(e), blk: e.target.closest(".blk"), moved: false };
   });
   window.addEventListener("mousemove", (e) => {
+    if (chDrag) {
+      if (Math.abs(e.clientX - chDrag.x) > 3) chDrag.moved = true;
+      if (!chDrag.moved) return;
+      const s = nearestSentence(tAt(e));
+      if (s && s.id !== chDrag.sid) {
+        chDrag.sid = s.id; chDrag.t = s.start;
+        const mk = tl.querySelector(`.chmark[data-ch="${chDrag.id}"]`), lb = tl.querySelector(`.chlab[data-chl="${chDrag.id}"]`);
+        if (mk) { mk.style.left = (s.start / D * 100) + "%"; mk.classList.add("dragging"); mk.title = `松开：改从第 ${s.id} 句开始`; }
+        if (lb) { lb.style.left = (s.start / D * 100) + "%"; lb.classList.add("dragging"); lb.textContent = `${(edit.chapters.find(x => x.id === chDrag.id) || {}).title} ← 第 ${s.id} 句`; }
+      }
+      return;
+    }
     if (!drag) return;
     if (Math.abs(e.clientX - drag.x) > 4) drag.moved = true;
     if (drag.moved) {
@@ -819,6 +1052,12 @@ function bind() {
     }
   });
   window.addEventListener("mouseup", (e) => {
+    if (chDrag) {
+      const d = chDrag; chDrag = null;
+      if (!d.moved) seekChapter(d.id);
+      else { const c = (edit.chapters || []).find(x => x.id === d.id); if (c && c.sentence !== d.sid && !chapOf(d.sid)) moveChapter(d.id, d.sid); else renderTimeline(); }
+      return;
+    }
     if (!drag) return;
     const d = drag; drag = null; const sel = $("#sel"); if (sel) sel.hidden = true;
     if (d.moved) {
@@ -853,6 +1092,25 @@ function endDrag() {
   dragSid = null; dropAt = null; $("#dropmark").hidden = true;
   document.querySelectorAll(".ds.dragging").forEach(x => x.classList.remove("dragging"));
 }
+// 拖章节分界（逐字稿的 .chh / 逐句的 .chrow）到某一句上：这一章改从那句开始
+function startChDrag(e, el) {
+  dragCh = el.dataset.ch; dropAt = null; hideBar(); window.getSelection()?.removeAllRanges();
+  e.dataTransfer.effectAllowed = "move"; e.dataTransfer.setData("text/plain", dragCh);
+}
+function chDragOver(e, sel) {
+  const el = e.target.closest && e.target.closest(sel); if (!el) return;
+  e.preventDefault();
+  if (dropAt !== +el.dataset.s) {
+    document.querySelectorAll(".droptgt").forEach(x => x.classList.remove("droptgt"));
+    el.classList.add("droptgt"); dropAt = +el.dataset.s;
+  }
+}
+function chDrop(e) {
+  e.preventDefault();
+  const id = dragCh, sid = dropAt; endChDrag();
+  if (id !== null && sid !== null && !Number.isNaN(sid)) moveChapter(id, sid);
+}
+function endChDrag() { dragCh = null; dropAt = null; document.querySelectorAll(".droptgt").forEach(x => x.classList.remove("droptgt")); }
 function hideBar() { docSel = null; const b = $("#dbar"); if (b) b.hidden = true; }
 function onDocSelect(e) {
   const sel = window.getSelection();
@@ -912,6 +1170,7 @@ async function save(force) {
     if (!r.ok) throw new Error(j.error || r.statusText);
     setDirty(false);
     toast(`已写入工程：剪后 ${fmtLen(j.after)}，${j.segments} 段，字幕 ${j.subtitle_lines} 行\n备份：${j.backup || "无"}` +
+      (j.chapters_txt ? `\n章节时间戳（FocuSee 存不了章节，贴进视频简介用）：${j.chapters_txt}` : "") +
       (derived.moves.length ? "\n调换顺序不会写进原工程（FocuSee 会按时间排回去），要用请点「生成调序工程」" : ""), derived.moves.length ? 8000 : 5000);
   } catch (e) {
     toast("保存失败：" + e.message, 6000);
@@ -961,6 +1220,8 @@ async function init() {
   D = j.duration; T = j.transcript; edit = j.edit;
   edit.cuts.forEach(c => { if (c.enabled === undefined) c.enabled = true; });
   sentences = T.sentences;
+  sentById = new Map(sentences.map(s => [s.id, s]));
+  edit.chapters = edit.chapters || [];
   words = [];
   for (const s of sentences) for (const w of s.words) { w.gi = words.length; w.sid = s.id; words.push(w); }
   document.title = "粗剪审阅 · " + j.name;
